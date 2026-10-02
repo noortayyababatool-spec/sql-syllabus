@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 2: WHERE, every operator, NULL, LIKE · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/" aria-current="page">Day 2</a><a href="../day3/">Day 3</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 2</p>
+  <h1>Day 2: WHERE, every operator, NULL, LIKE</h1>
+  <p class="meta">Wed 30 September 2026 · 44 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> filter rows with any condition an interviewer could name, and never be surprised by NULL again.</p>
+    <p><strong>Read:</strong> SQL Where, SQL And Or Not, SQL Null Values, SQL Like, SQL Wildcards, SQL In, SQL Between, SQL Operators.</p>
+  </div>
+  
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>24</span></li><li><a href="#stretch">Stretch</a> <span>4</span></li><li><a href="#stretch-continued">Stretch (continued)</a> <span>11</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Equality and not-equal, both spellings</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color = 'Red';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE filters rows: only rows where the condition is true are returned. Color = 'Red' keeps the 38 red products. Text values go inside single quotes.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. Equality and not-equal, both spellings <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color &lt;&gt; 'Red';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>&lt;&gt; means 'not equal to'. It returns every product whose colour is something other than red: 218 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">218 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>1. Equality and not-equal, both spellings <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color != 'Red';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>!= is the second spelling of 'not equal'. It gives exactly the same 218 rows as &lt;&gt;. Notice that 38 + 218 = 256, not 504: the 248 products whose Color is NULL appear in neither result, because comparing NULL with anything gives 'unknown', not true.</p><p class="pin"><span aria-hidden="true">📍</span> &lt;&gt; and != are the same operator and return the same row count. Neither one returns products whose Color is NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">218 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>2. Comparison operators</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice &gt; 1000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>&gt; means strictly greater than. Products priced exactly 1000 would not be included.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">86 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>2. Comparison operators <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice &gt;= 1431.50;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>&gt;= means greater than or equal to, so products priced exactly 1431.50 (the HL Road Frames) are included.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">55 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>2. Comparison operators <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice &lt; 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>&lt; means strictly less than. Most of the 213 rows have ListPrice 0: they are components, not products for sale. That is why 'WHERE ListPrice &gt; 0' is often the first filter you add.</p><p class="pin"><span aria-hidden="true">📍</span> Includes the components with ListPrice 0.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">213 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>2. Comparison operators <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice &lt;= 9.50;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>&lt;= means less than or equal to. Products priced exactly 9.50 are included, products at 9.99 are not.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">212 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>3. BETWEEN is inclusive</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice BETWEEN 500 AND 2000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>BETWEEN a AND b selects a range. It is inclusive: products priced exactly 500 or exactly 2000 would be included.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">101 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>3. BETWEEN is inclusive <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product WHERE ListPrice &gt;= 500 AND ListPrice &lt;= 2000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The long way of writing the same range. It returns the same 101 rows as BETWEEN, proving that BETWEEN includes both ends. Always put the smaller value first: BETWEEN 2000 AND 500 returns nothing.</p><p class="pin"><span aria-hidden="true">📍</span> Same row count as BETWEEN, which proves BETWEEN includes both end values.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">101 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>4. OR then IN then NOT IN</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product
+WHERE Color = 'Red' OR Color = 'Black' OR Color = 'Silver';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>OR returns a row if any one of the conditions is true, so this returns products that are red, black or silver: 174 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">174 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>4. OR then IN then NOT IN <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color IN ('Red', 'Black', 'Silver');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>IN (list) is shorthand for a chain of ORs on the same column. It returns the same 174 rows and is easier to read and extend.</p><p class="pin"><span aria-hidden="true">📍</span> IN is a shorter way to write a list of ORs. Same row count.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">174 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>4. OR then IN then NOT IN <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color NOT IN ('Red', 'Black', 'Silver');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NOT IN returns rows whose value is not in the list: 82 rows. 174 + 82 = 256, so again the 248 NULL-colour products are missing. To include them you must add OR Color IS NULL.</p><p class="pin"><span aria-hidden="true">📍</span> NOT IN does not return the products whose Color is NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">82 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>5. AND with a date</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, Status, TotalDue
+FROM Sales.SalesOrderHeader
+WHERE Status = 5 AND OrderDate &gt; '2013-06-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>AND requires both conditions to be true. Status 5 means 'shipped'. Dates are written as text in 'YYYY-MM-DD' format and SQL Server converts them to dates automatically. Result: shipped orders placed after 1 June 2013.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">23,900 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>6. NULL the right way and the wrong way</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>IS NULL is the correct way to find missing values: 248 products have no colour.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">248 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>6. NULL the right way and the wrong way <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color IS NOT NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>IS NOT NULL returns rows that do have a value: 256 rows. 248 + 256 = 504, every product.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">256 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>6. NULL the right way and the wrong way <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product WHERE Color = NULL;  -- zero rows, always</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The wrong way. NULL means 'unknown', so Color = NULL asks 'is this colour equal to an unknown value?' The answer is unknown, never true, so no rows come back. There is no error message, which makes this mistake easy to miss.</p><p class="pin"><span aria-hidden="true">📍</span> NULL means unknown, so Color = NULL is never true. Always use IS NULL or IS NOT NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>7. AND/OR precedence trap</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice FROM Production.Product
+WHERE Color = 'Red' AND ListPrice &gt; 1000 OR Color = 'Black';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>No brackets. AND is evaluated before OR, so SQL Server reads this as (Red AND price &gt; 1000) OR Black. Result: 113 rows, including cheap black products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">113 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>7. AND/OR precedence trap <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice FROM Production.Product
+WHERE Color = 'Red' AND (ListPrice &gt; 1000 OR Color = 'Black');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Brackets around the OR change the meaning: the product must be red, and then either expensive or black. A red product can never be black, so this only returns expensive red products: 20 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>7. AND/OR precedence trap <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice FROM Production.Product
+WHERE (Color = 'Red' AND ListPrice &gt; 1000) OR Color = 'Black';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Brackets around the AND make the default order explicit. Same 113 rows as the first query, which proves AND binds before OR. Always use brackets when you mix AND and OR, so the reader does not have to remember the rule.</p><p class="pin"><span aria-hidden="true">📍</span> The first and third queries return the same rows because AND binds before OR. The second query returns a different count. Always use brackets.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">113 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>8. LIKE starts with</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE 'Mountain%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LIKE does pattern matching on text. % means 'any number of characters, including none'. 'Mountain%' matches every name that starts with Mountain.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>9. LIKE contains, ends with</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '%Frame%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A % on both sides means 'Frame appears anywhere in the name': 79 products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">79 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>9. LIKE contains, ends with <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '%Black, 42';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A % only at the start means 'ends with'. This finds the 5 products whose name ends in 'Black, 42' (black, size 42).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>10. Exact length with underscores</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT FirstName FROM Person.Person WHERE FirstName LIKE '____';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>_ (underscore) matches exactly one character. Four underscores match names that are exactly four letters long. DISTINCT removes repeated names.</p><p class="pin"><span aria-hidden="true">📍</span> Each _ matches exactly one character, so this returns four-letter names.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">144 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>10. Exact length with underscores <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT FirstName FROM Person.Person WHERE FirstName LIKE 'A___';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Combines a fixed letter with underscores: names that start with A and are exactly four letters long (Adam, Alex, Anna...).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">13 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>1. Always true, always false</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM Production.Product WHERE 1 = 1;  -- always true</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>1 = 1 is true for every row, so the filter keeps everything: 504. Developers often start dynamic queries with WHERE 1 = 1 so every real condition can be added as 'AND ...'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>1. Always true, always false <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM Production.Product WHERE 1 = 0;  -- always false</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>1 = 0 is never true, so no rows pass and the count is 0. A common trick to get a table's column structure without any data.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>2. Case insensitivity. Lowercase still matches.</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Color = 'red';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Lowercase 'red' still finds the 38 'Red' products, because the database comparison rules (the collation) ignore case.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>2. Case insensitivity. Lowercase still matches. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SERVERPROPERTY('Collation');  -- CI = case-insensitive, AS = accent-sensitive</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SERVERPROPERTY('Collation') shows the server's default comparison rules: SQL_Latin1_General_CP1_CI_AS. CI = case-insensitive ('red' = 'Red'). AS = accent-sensitive ('e' and 'é' are different).</p><p class="pin"><span aria-hidden="true">📍</span> CI in the result means case-insensitive, so 'red' matches 'Red'. AS means accent-sensitive, so 'e' and 'é' are treated as different characters.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-continued"><h2>Stretch (continued)</h2>
+      <article class="q" id="q29">
+        <div class="q-head"><span class="num">#29</span><h3>3. Implicit conversion. First works, second errors.</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE ListPrice &gt; '1000';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>'1000' is text, but ListPrice is a number (money). SQL Server converts the text to a number automatically (implicit conversion) and the query works.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_29.png" aria-label="Enlarge screenshot of query 29"><img src="shots/q_29.png" loading="lazy" alt="SSMS screenshot: query 29 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">86 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q30">
+        <div class="q-head"><span class="num">#30</span><h3>3. Implicit conversion. First works, second errors. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name &gt; 100;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Now the comparison goes the other way. Numbers have higher priority than text, so SQL Server tries to convert every Name into an integer. 'Adjustable Race' is not a number, so the query fails with error 245 (conversion failed). Always compare a column with a value of the same type.</p><p class="pin"><span aria-hidden="true">📍</span> Error 245: SQL Server tries to turn every Name into a number and fails.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_30.png" aria-label="Enlarge screenshot of query 30"><img src="shots/q_30.png" loading="lazy" alt="SSMS screenshot: query 30 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Conversion failed when converting the nvarchar value 'Adjustable Race' to data type int.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q31">
+        <div class="q-head"><span class="num">#31</span><h3>4. Bracket wildcards, T-SQL only</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '[HM]%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>[HM] matches one character that is either H or M. So this returns names starting with H or M. Square-bracket wildcards are a SQL Server (T-SQL) feature; standard SQL does not have them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_31.png" aria-label="Enlarge screenshot of query 31"><img src="shots/q_31.png" loading="lazy" alt="SSMS screenshot: query 31 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">193 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q32">
+        <div class="q-head"><span class="num">#32</span><h3>4. Bracket wildcards, T-SQL only <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '[^A-M]%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>[A-M] is a range of letters and ^ inside the brackets means NOT. So this returns names whose first letter is not between A and M, i.e. names starting with N to Z (or a digit or symbol).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_32.png" aria-label="Enlarge screenshot of query 32"><img src="shots/q_32.png" loading="lazy" alt="SSMS screenshot: query 32 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">145 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q33">
+        <div class="q-head"><span class="num">#33</span><h3>4. Bracket wildcards, T-SQL only <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '%[0-9]%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>[0-9] matches any single digit. With % on both sides this returns every product name that contains at least one number, such as sizes (58, 44) or model numbers (Road-150).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_33.png" aria-label="Enlarge screenshot of query 33"><img src="shots/q_33.png" loading="lazy" alt="SSMS screenshot: query 33 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">316 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q34">
+        <div class="q-head"><span class="num">#34</span><h3>5. Escape a literal underscore</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '%\_%' ESCAPE '\';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>_ is normally a wildcard. To search for a real underscore you 'escape' it: ESCAPE '\' tells SQL Server that a character after \ should be taken literally. No product names contain an underscore, so the correct answer here is 0 rows. Without the escape, '%_%' would match every name with at least one character.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_34.png" aria-label="Enlarge screenshot of query 34"><img src="shots/q_34.png" loading="lazy" alt="SSMS screenshot: query 34 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q35">
+        <div class="q-head"><span class="num">#35</span><h3>6. Date columns with a time part</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 ModifiedDate FROM Sales.SalesOrderHeader WHERE ModifiedDate = '2011-06-07';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ModifiedDate is a datetime, so it stores a time as well as a date. '2011-06-07' means midnight (00:00:00.000) on that day. The query only matches rows modified at exactly midnight, so any row with a later time on that day is missed. In AdventureWorks every ModifiedDate happens to be at midnight, so here it still finds rows; on real data with times it would silently miss most of them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_35.png" aria-label="Enlarge screenshot of query 35"><img src="shots/q_35.png" loading="lazy" alt="SSMS screenshot: query 35 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q36">
+        <div class="q-head"><span class="num">#36</span><h3>6. Date columns with a time part <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 ModifiedDate FROM Sales.SalesOrderHeader
+WHERE CAST(ModifiedDate AS DATE) = '2011-06-07';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CAST(ModifiedDate AS DATE) removes the time part, so every row from 7 June 2011 matches, whatever the time. The faster way on large tables is a range: ModifiedDate &gt;= '2011-06-07' AND ModifiedDate &lt; '2011-06-08', because it lets SQL Server use an index.</p><p class="pin"><span aria-hidden="true">📍</span> CAST(... AS DATE) drops the time, so every row from that day matches whatever its time.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_36.png" aria-label="Enlarge screenshot of query 36"><img src="shots/q_36.png" loading="lazy" alt="SSMS screenshot: query 36 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q37">
+        <div class="q-head"><span class="num">#37</span><h3>7. Crude email check. Second should be zero.</h3></div>
+        <pre><code class="language-sql">SELECT EmailAddress FROM Person.EmailAddress WHERE EmailAddress LIKE '%@%.%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The pattern means: some characters, an @, some characters, a dot, some characters. Every real email address matches this rough shape. It is not full validation, just a quick sanity check.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_37.png" aria-label="Enlarge screenshot of query 37"><img src="shots/q_37.png" loading="lazy" alt="SSMS screenshot: query 37 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q38">
+        <div class="q-head"><span class="num">#38</span><h3>7. Crude email check. Second should be zero. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT EmailAddress FROM Person.EmailAddress WHERE EmailAddress NOT LIKE '%@%.%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NOT LIKE returns the rows that fail the check. 0 rows means every email address in the table has the expected shape.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_38.png" aria-label="Enlarge screenshot of query 38"><img src="shots/q_38.png" loading="lazy" alt="SSMS screenshot: query 38 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q39">
+        <div class="q-head"><span class="num">#39</span><h3>8. Five conditions</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice, Class
+FROM Production.Product
+WHERE (Color IN ('Black', 'Silver') OR Color IS NULL)
+  AND ListPrice BETWEEN 100 AND 2000
+  AND Name NOT LIKE '%Frame%'
+  AND Class = 'H';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>In English before running: 'high-class (H) products that are black, silver or have no colour, priced from 100 to 2000, and are not frames.' The brackets around the colour test matter: without them the OR would apply to the whole WHERE clause and let in unwanted rows.</p><p class="pin"><span aria-hidden="true">📍</span> In English: high-class products that are black, silver or have no colour, priced 100 to 2000, and are not frames.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_39.png" aria-label="Enlarge screenshot of query 39"><img src="shots/q_39.png" loading="lazy" alt="SSMS screenshot: query 39 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q40">
+        <div class="q-head"><span class="num">#40</span><h3>Q1. Products priced 800 to 3000, not Red, Black or Silver (include NULL colours)</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice FROM Production.Product
+WHERE ListPrice BETWEEN 800 AND 3000
+  AND (Color NOT IN ('Red', 'Black', 'Silver') OR Color IS NULL);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NOT IN alone would drop the NULL colours (see drill 4), so OR Color IS NULL adds them back. The brackets keep that OR separate from the price condition.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_40.png" aria-label="Enlarge screenshot of query 40"><img src="shots/q_40.png" loading="lazy" alt="SSMS screenshot: query 40 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">29 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q41">
+        <div class="q-head"><span class="num">#41</span><h3>Q2. People with no middle name</h3></div>
+        <pre><code class="language-sql">SELECT FirstName, MiddleName, LastName FROM Person.Person WHERE MiddleName IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A missing middle name is stored as NULL, so IS NULL is the only correct test. MiddleName = NULL would return nothing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_41.png" aria-label="Enlarge screenshot of query 41"><img src="shots/q_41.png" loading="lazy" alt="SSMS screenshot: query 41 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8,499 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q42">
+        <div class="q-head"><span class="num">#42</span><h3>Q3. People whose last name ends in 'ez'</h3></div>
+        <pre><code class="language-sql">SELECT FirstName, LastName FROM Person.Person WHERE LastName LIKE '%ez';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>% at the start and nothing after 'ez' means 'ends with ez': Sanchez, Lopez, Gonzalez and so on.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_42.png" aria-label="Enlarge screenshot of query 42"><img src="shots/q_42.png" loading="lazy" alt="SSMS screenshot: query 42 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2,131 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q43">
+        <div class="q-head"><span class="num">#43</span><h3>Q4. Orders in July 2013 with TotalDue above 10000</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, TotalDue FROM Sales.SalesOrderHeader
+WHERE OrderDate &gt;= '2013-07-01' AND OrderDate &lt; '2013-08-01'
+  AND TotalDue &gt; 10000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>For a whole month use 'start inclusive, next month exclusive': &gt;= 1 July and &lt; 1 August. This catches every time on 31 July. BETWEEN '2013-07-01' AND '2013-07-31' would miss orders placed after midnight on 31 July.</p><p class="pin"><span aria-hidden="true">📍</span> Start inclusive, next month exclusive. Safer than BETWEEN for dates.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_43.png" aria-label="Enlarge screenshot of query 43"><img src="shots/q_43.png" loading="lazy" alt="SSMS screenshot: query 43 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">82 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q44">
+        <div class="q-head"><span class="num">#44</span><h3>Q5. Products whose name contains a comma</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product WHERE Name LIKE '%,%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A comma is not a wildcard, so it can be searched for directly with % on both sides. These are mostly products with a size or colour after the comma, like 'HL Road Frame - Red, 58'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_44.png" aria-label="Enlarge screenshot of query 44"><img src="shots/q_44.png" loading="lazy" alt="SSMS screenshot: query 44 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">214 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>Remember:</strong> products with <code>ListPrice = 0</code> are components, not free items. <code>WHERE ListPrice &gt; 0</code> is often the first filter you add.</div>
+  <nav class="pager"><a href="../day1/">← Day 1: SELECT, columns, DISTINCT, aliases</a><a href="../day3/">Day 3: ORDER BY, TOP, OFFSET-FETCH, functions →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 3: ORDER BY, TOP, OFFSET-FETCH, functions · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/" aria-current="page">Day 3</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 3</p>
+  <h1>Day 3: ORDER BY, TOP, OFFSET-FETCH, functions</h1>
+  <p class="meta">Thu 1 October 2026 · 33 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> control the order and size of results, and reshape values with string and date functions.</p>
+    <p><strong>Read:</strong> SQL Order By, SQL Select Top, SQL Aliases, and the SQL Server Functions reference (string and date sections).</p>
+  </div>
+  
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>18</span></li><li><a href="#stretch-string-functions">Stretch: string functions</a> <span>3</span></li><li><a href="#stretch-date-functions">Stretch: date functions</a> <span>2</span></li><li><a href="#stretch-other-functions">Stretch: other functions</a> <span>4</span></li><li><a href="#self-test">Self-test</a> <span>6</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Ascending, descending, multi-column</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product ORDER BY ListPrice;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ORDER BY sorts the result. The default direction is ascending (ASC), smallest first, so the 0-priced components come first. ORDER BY is the only way to guarantee the order of rows; without it SQL Server returns rows in whatever order is quickest.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. Ascending, descending, multi-column <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DESC reverses the order: most expensive first. The Road-150 bikes at 3578.27 are at the top.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>1. Ascending, descending, multi-column <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice FROM Production.Product ORDER BY Color, ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Sorting by two columns: first by Color (A to Z), then, inside each colour, by ListPrice from highest to lowest. Each column has its own direction: DESC only applies to ListPrice, Color is still ascending.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>2. Three-level sort</h3></div>
+        <pre><code class="language-sql">SELECT FirstName, LastName, PersonType FROM Person.Person
+ORDER BY PersonType, LastName, FirstName;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three sort levels. SQL Server sorts by PersonType first; ties are broken by LastName; any remaining ties are broken by FirstName. Like a phone book grouped by type.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>3. Top 5 dearest, top 5 cheapest that are actually sold</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 Name, ListPrice FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TOP 5 with ORDER BY ... DESC is the standard 'top N' pattern: sort from most expensive and keep the first five.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>3. Top 5 dearest, top 5 cheapest that are actually sold <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 Name, ListPrice FROM Production.Product WHERE ListPrice &gt; 0 ORDER BY ListPrice;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Without WHERE ListPrice &gt; 0 the cheapest five would all be components priced 0. The WHERE runs first and removes them, then ORDER BY sorts the remaining products, then TOP keeps five.</p><p class="pin"><span aria-hidden="true">📍</span> WHERE ListPrice &gt; 0 removes the components, otherwise the cheapest five would all be 0.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>4. Order by a column not selected. Works. Add DISTINCT and it fails.</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>You can sort by a column you are not showing. SQL Server still has ListPrice available for each row while it sorts.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>4. Order by a column not selected. Works. Add DISTINCT and it fails. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT Name FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 145. DISTINCT first collapses the rows down to unique names. After that, one name could in theory stand for several rows with different prices, so SQL Server does not know which ListPrice to sort by. Rule: with DISTINCT, every ORDER BY column must be in the SELECT list.</p><p class="pin"><span aria-hidden="true">📍</span> Error 145: with DISTINCT, ORDER BY items must appear in the select list.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): ORDER BY items must appear in the select list if SELECT DISTINCT is specified.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>5. Paging. Page 2 then page 3, 10 per page.</h3></div>
+        <pre><code class="language-sql">SELECT ProductID, Name FROM Production.Product
+ORDER BY ProductID OFFSET 10 ROWS FETCH NEXT 10 ROWS ONLY;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>OFFSET 10 ROWS skips the first 10 rows (page 1); FETCH NEXT 10 ROWS ONLY returns the following 10 (page 2). OFFSET-FETCH must come after an ORDER BY, because pages only make sense in a fixed order.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>5. Paging. Page 2 then page 3, 10 per page. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT ProductID, Name FROM Production.Product
+ORDER BY ProductID OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Page 3 skips 20 rows. The general formula for page n with page size s is OFFSET (n - 1) * s ROWS FETCH NEXT s ROWS ONLY. This is how websites show results one page at a time.</p><p class="pin"><span aria-hidden="true">📍</span> Page n of size s: OFFSET (n - 1) * s ROWS FETCH NEXT s ROWS ONLY.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>6. WITH TIES. Compare counts.</h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 Name, ListPrice FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TOP 3 returns exactly 3 rows. But five Road-150 bikes share the top price of 3578.27, so two of them are cut off, and which two is not defined.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>6. WITH TIES. Compare counts. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 WITH TIES Name, ListPrice FROM Production.Product ORDER BY ListPrice DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WITH TIES also returns any row whose ORDER BY value equals the last row's value. Because five bikes cost 3578.27, this returns 5 rows instead of 3. WITH TIES requires an ORDER BY.</p><p class="pin"><span aria-hidden="true">📍</span> WITH TIES also returns every row that ties with the last one, so it returns 5 rows, not 3.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>7. Aliases with and without AS, table alias</h3></div>
+        <pre><code class="language-sql">SELECT p.Name AS ProductName, p.ListPrice Price FROM Production.Product AS p;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Aliases rename things. Column aliases (ProductName, Price) change the heading in the result. AS is optional: 'p.ListPrice Price' works too, but AS is clearer. The table alias p is a short name for Production.Product, so columns can be written p.Name. Table aliases become essential when joining several tables.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>7. Aliases with and without AS, table alias <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT p.Name, p.ListPrice FROM Production.Product p;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same table alias without AS. When a table has an alias you refer to its columns through the alias (p.Name).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>8. Order by position. Works. Bad habit.</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product ORDER BY 2 DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ORDER BY 2 means 'sort by the second column in the SELECT list' (ListPrice). It works, but it is a bad habit: if someone later adds or reorders columns, the query silently sorts by the wrong column with no error. Always write the column name.</p><p class="pin"><span aria-hidden="true">📍</span> Bad habit: if the SELECT list changes, ORDER BY 2 silently sorts by a different column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>9. NULLs sort first ascending in SQL Server. Push them last.</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product ORDER BY Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>In SQL Server, NULL counts as lower than any value, so in an ascending sort the 248 products with no colour come first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>9. NULLs sort first ascending in SQL Server. Push them last. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name, Color FROM Production.Product
+ORDER BY CASE WHEN Color IS NULL THEN 1 ELSE 0 END, Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The CASE expression makes a hidden sort key: 1 for NULL colours, 0 for everything else. Sorting on that first puts real colours (0) before NULLs (1); the second sort key, Color, then sorts the colours alphabetically. SQL Server has no NULLS LAST keyword, so this is the standard workaround.</p><p class="pin"><span aria-hidden="true">📍</span> The CASE gives NULL colours a 1 and the rest a 0, so NULLs sort last.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>10. The latest order. Memorise this shape.</h3></div>
+        <pre><code class="language-sql">SELECT TOP 1 SalesOrderID, OrderDate, TotalDue FROM Sales.SalesOrderHeader
+ORDER BY OrderDate DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TOP 1 + ORDER BY ... DESC returns the single most recent order. This shape (latest login, newest order, highest score) comes up constantly. If several orders share the latest date, add a second sort column such as SalesOrderID DESC so the result is predictable.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-string-functions"><h2>Stretch: string functions</h2>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>String functions</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10
+    FirstName,
+    UPPER(FirstName) AS Upper,
+    LOWER(LastName) AS Lower,
+    LEN(LastName) AS LastNameLength,
+    LEFT(FirstName, 1) AS Initial,
+    CONCAT(FirstName, ' ', MiddleName, ' ', LastName) AS FullName,   -- CONCAT treats NULL as empty; + does not
+    REPLACE(LastName, 'a', '@') AS Replaced,
+    REVERSE(FirstName) AS Backwards
+FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>UPPER and LOWER change case. LEN counts the characters (ignoring trailing spaces). LEFT(text, n) takes the first n characters, here the initial. CONCAT joins values and treats NULL as an empty string, so FullName is never NULL, unlike the + operator on Day 1. REPLACE swaps every 'a' for '@' (case-insensitive here because of the CI collation). REVERSE writes the text backwards.</p><p class="pin"><span aria-hidden="true">📍</span> CONCAT treats NULL as an empty string, so FullName is never NULL (compare Day 1 drill 9).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Extract the part before @ in emails</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 EmailAddress, LEFT(EmailAddress, CHARINDEX('@', EmailAddress) - 1) AS Username
+FROM Person.EmailAddress;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CHARINDEX('@', EmailAddress) returns the position of the @ (for example 6). LEFT(..., position - 1) keeps everything before it. The -1 removes the @ itself. A common pattern for splitting text at a separator.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Format a price with thousands separators</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 Name, FORMAT(ListPrice, 'N2') AS Price FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FORMAT(value, 'N2') turns a number into text with thousands separators and 2 decimal places (3,578.27). The result is text, so use FORMAT only for display, not for further calculations. FORMAT is also slow on large tables.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-date-functions"><h2>Stretch: date functions</h2>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Date functions</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10
+    SalesOrderID,
+    OrderDate,
+    YEAR(OrderDate) AS Yr,
+    MONTH(OrderDate) AS Mth,
+    DATENAME(month, OrderDate) AS MonthName,
+    DATENAME(weekday, OrderDate) AS DayName,
+    DATEDIFF(day, OrderDate, ShipDate) AS DaysToShip,
+    DATEADD(day, 30, OrderDate) AS PaymentDue,
+    EOMONTH(OrderDate) AS MonthEnd,
+    CAST(OrderDate AS DATE) AS DateOnly,
+    CONVERT(varchar, OrderDate, 103) AS UKFormat,
+    FORMAT(OrderDate, 'yyyy-MM') AS YearMonth
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>YEAR and MONTH return numbers. DATENAME returns names ('May', 'Tuesday'). DATEDIFF(day, start, end) counts the days between two dates. DATEADD(day, 30, date) adds 30 days. EOMONTH gives the last day of the month. CAST(... AS DATE) drops the time. CONVERT(varchar, date, 103) formats as dd/mm/yyyy (style 103 = British). FORMAT(date, 'yyyy-MM') gives a year-month label, useful for monthly reports.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Current date and time</h3></div>
+        <pre><code class="language-sql">SELECT GETDATE(), SYSDATETIME(), GETUTCDATE();</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>GETDATE() returns the current local date and time (datetime, about 3 ms precision). SYSDATETIME() returns the same moment with higher precision (datetime2, 100 ns). GETUTCDATE() returns the current time in UTC. Pakistan time is UTC+5, so GETUTCDATE() is 5 hours behind GETDATE() on this PC.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-other-functions"><h2>Stretch: other functions</h2>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>ISNULL and COALESCE</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 Name, Color,
+    ISNULL(Color, 'No colour') AS ColorOrDefault,
+    COALESCE(Color, Class, 'Unknown') AS FirstNonNull
+FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ISNULL(Color, 'No colour') replaces a NULL with a default value. COALESCE takes any number of arguments and returns the first one that is not NULL: the colour if there is one, otherwise the class, otherwise 'Unknown'. COALESCE is standard SQL and works in other databases; ISNULL is SQL Server only.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>Maths functions</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 Name, ListPrice,
+    ROUND(ListPrice * 1.17, 2) AS WithTax,
+    CEILING(ListPrice) AS Up,
+    FLOOR(ListPrice) AS Down,
+    ListPrice % 100 AS Remainder
+FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROUND(x, 2) rounds to 2 decimal places. CEILING always rounds up to the next whole number, FLOOR always rounds down. % is modulo: the remainder after dividing by 100 (for 337.22 it is 37.22).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>CAST to change data type</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 CAST(ListPrice AS INT) AS Whole,
+    CAST(ListPrice AS VARCHAR(20)) + ' USD' AS Labelled
+FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CAST(value AS type) converts between data types. CAST(ListPrice AS INT) removes the decimals (SQL Server rounds money values to the nearest whole number here). Casting to VARCHAR turns the number into text so it can be joined to ' USD' with +; adding a number and text directly would cause a conversion error.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>Random row</h3></div>
+        <pre><code class="language-sql">SELECT TOP 1 Name FROM Production.Product ORDER BY NEWID();   -- random row</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NEWID() creates a new random unique identifier for every row. Sorting by it shuffles the rows, and TOP 1 picks the first, so you get a random product each time you run it. Fine for small tables; slow on very large ones because every row must be sorted.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>Q1. The 3 newest orders showing ID and date only</h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 SalesOrderID, OrderDate FROM Sales.SalesOrderHeader ORDER BY OrderDate DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The 'latest' shape from drill 10, with TOP 3 and only the two requested columns.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q29">
+        <div class="q-head"><span class="num">#29</span><h3>Q2. Products page 4 of 25 per page, by name</h3></div>
+        <pre><code class="language-sql">SELECT ProductID, Name FROM Production.Product
+ORDER BY Name OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Page 4 with 25 per page skips (4 - 1) * 25 = 75 rows and fetches the next 25. Rows 76 to 100 in name order.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_29.png" aria-label="Enlarge screenshot of query 29"><img src="shots/q_29.png" loading="lazy" alt="SSMS screenshot: query 29 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">25 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q30">
+        <div class="q-head"><span class="num">#30</span><h3>Q3. Every person as LASTNAME, Firstname</h3></div>
+        <pre><code class="language-sql">SELECT UPPER(LastName) + ', ' + UPPER(LEFT(FirstName, 1))
+       + LOWER(SUBSTRING(FirstName, 2, LEN(FirstName))) AS PersonName
+FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>UPPER(LastName) gives the capitals. For 'Firstname' casing, the first letter is made upper case with UPPER(LEFT(FirstName, 1)) and the rest lower case with LOWER(SUBSTRING(FirstName, 2, LEN(FirstName))). SUBSTRING(text, start, length) cuts out part of a string. The pieces are joined with +; neither name can be NULL in this table, so + is safe.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_30.png" aria-label="Enlarge screenshot of query 30"><img src="shots/q_30.png" loading="lazy" alt="SSMS screenshot: query 30 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q31">
+        <div class="q-head"><span class="num">#31</span><h3>Q4. Days between each order and its ship date, longest first</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, ShipDate, DATEDIFF(day, OrderDate, ShipDate) AS DaysToShip
+FROM Sales.SalesOrderHeader
+ORDER BY DaysToShip DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DATEDIFF(day, OrderDate, ShipDate) calculates the gap in days. ORDER BY can use the alias DaysToShip because ORDER BY runs after SELECT. (WHERE runs before SELECT, so it could not use the alias.) AdventureWorks orders ship 7 or 8 days after ordering, so the 8-day orders come first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_31.png" aria-label="Enlarge screenshot of query 31"><img src="shots/q_31.png" loading="lazy" alt="SSMS screenshot: query 31 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q32">
+        <div class="q-head"><span class="num">#32</span><h3>Q5. The second most expensive product without OFFSET</h3></div>
+        <pre><code class="language-sql">SELECT TOP 1 Name, ListPrice
+FROM (SELECT TOP 2 Name, ListPrice FROM Production.Product ORDER BY ListPrice DESC) AS t
+ORDER BY ListPrice;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The inner query (subquery) takes the 2 most expensive products. The outer query sorts those two ascending and keeps the first, which is the second most expensive. Watch out for ties: five products share the top price, so this returns another 3578.27 product. The next query solves the 'second highest price' version.</p><p class="pin"><span aria-hidden="true">📍</span> Ties: the two dearest products cost the same, so this returns a 3578.27 product. The next query asks for the second highest price.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_32.png" aria-label="Enlarge screenshot of query 32"><img src="shots/q_32.png" loading="lazy" alt="SSMS screenshot: query 32 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q33">
+        <div class="q-head"><span class="num">#33</span><h3>Q5. The second most expensive product without OFFSET <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 1 ListPrice
+FROM (SELECT DISTINCT TOP 2 ListPrice FROM Production.Product ORDER BY ListPrice DESC) AS t
+ORDER BY ListPrice;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Adding DISTINCT inside the subquery takes the two highest different prices (3578.27 and 3399.99). The outer query keeps the lower of those, so the answer is the second highest price, 3399.99. Subqueries are covered properly on Day 6.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_33.png" aria-label="Enlarge screenshot of query 33"><img src="shots/q_33.png" loading="lazy" alt="SSMS screenshot: query 33 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section>
+  
+  <nav class="pager"><a href="../day2/">← Day 2: WHERE, every operator, NULL, LIKE</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

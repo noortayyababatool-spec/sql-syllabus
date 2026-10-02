@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 1: SELECT, columns, DISTINCT, aliases · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/" aria-current="page">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 1</p>
+  <h1>Day 1: SELECT, columns, DISTINCT, aliases</h1>
+  <p class="meta">Mon 29 September 2026 · 25 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> get AdventureWorks running, then read data with SELECT: every column, chosen columns, DISTINCT, arithmetic, aliases and string concatenation.</p>
+    <p><strong>Read:</strong> W3Schools: SQL Intro, SQL Syntax, SQL Select, SQL Select Distinct. Create DB and Create Table are skipped for now and come back on Day 7.</p>
+  </div>
+  
+      <h2>Setup</h2>
+      <p>The practice database is <strong>AdventureWorks2022</strong>, Microsoft's sample database for a bicycle company. It was restored on <code>localhost\SQLEXPRESS</code> from the official backup
+      (<a href="https://learn.microsoft.com/en-us/sql/samples/adventureworks-install-configure?view=sql-server-ver17&amp;tabs=ssms" target="_blank" rel="noopener">install guide</a>).
+      Table names have two parts, <code>Schema.Table</code>, for example <code>Production.Product</code>. The schema must be included in every query.</p>
+      <h2>Notes: SQL Server data types</h2>
+      <div class="types">
+        <div><h3>Numeric</h3><p><code>tinyint</code> <code>smallint</code> <code>int</code> <code>bigint</code> whole numbers of growing size<br><code>decimal</code> / <code>numeric</code> exact decimals<br><code>float</code> / <code>real</code> approximate decimals<br><code>money</code> / <code>smallmoney</code> currency</p></div>
+        <div><h3>Character</h3><p><code>char</code> fixed length<br><code>varchar</code> variable length<br><code>nchar</code> / <code>nvarchar</code> Unicode versions, for any language</p></div>
+        <div><h3>Date and time</h3><p><code>date</code> <code>time</code><br><code>datetime</code> <code>smalldatetime</code><br><code>datetime2</code> more precise<br><code>datetimeoffset</code> includes the time zone</p></div>
+        <div><h3>Integrity constraints</h3><p>Rules that keep data valid: <code>PRIMARY KEY</code>, <code>FOREIGN KEY</code>, <code>UNIQUE</code>, <code>NOT NULL</code>, <code>CHECK</code>, <code>DEFAULT</code>.</p></div>
+      </div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>17</span></li><li><a href="#stretch">Stretch</a> <span>8</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Every column. Note the row count shown bottom right.</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 * FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SELECT * means 'give me every column'. Production.Product is the table: Production is the schema (a folder of related tables) and Product is the table name. TOP 10 limits the output to the first 10 rows so the grid stays readable; without it you get all 504 products. The row count appears at the bottom right of the SSMS status bar.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. Every column. Note the row count shown bottom right. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT * FROM Sales.Customer;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same SELECT * pattern on a different schema. Sales.Customer has 19,820 rows. Notice PersonID is NULL for many rows: those customers are stores, not individual people. SELECT * is fine for exploring a table, but in real queries you should list the columns you need so the query is faster and does not break when a column is added.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,820 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>1. Every column. Note the row count shown bottom right. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT * FROM Sales.SalesTerritory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A small lookup table with 10 rows, one per sales territory. Small tables like this are good for getting a feel for the data: each row is a region (Northwest, Canada, France...) with its year-to-date sales figures.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>2. Two columns only</h3></div>
+        <pre><code class="language-sql">SELECT FirstName, LastName FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Instead of *, list the exact columns you want, separated by commas. The query returns only those two columns for all 19,972 people. This is the normal way to write a SELECT: you read less data and the result is easier to work with.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>3. Column order follows your list, not the table</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Name comes first, ListPrice second, because that is the order written in the SELECT list.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>3. Column order follows your list, not the table <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT ListPrice, Name FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Swapping the column names swaps the column order in the result. The order of columns in the output is always decided by your SELECT list, never by how the table was created.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>4. Distinct on one column</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT Color FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DISTINCT removes duplicate rows from the result. 504 products collapse into 10 unique colours. One of the rows is NULL: products with no colour are grouped together and NULL is treated as one distinct value.</p><p class="pin"><span aria-hidden="true">📍</span> Returns a NULL row. NULL counts as one distinct value.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>5. Distinct on another</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT Class FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same idea on the Class column: only 4 values come back (NULL, H, L, M). H, M and L stand for High, Medium and Low class products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>6. Distinct on two columns. More rows than 4 or 5.</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT Color, Class FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DISTINCT works on the whole row, not on each column separately. With two columns you get one row per unique (Color, Class) pair. Red can appear with class H, M and L, so Red alone becomes several rows. Think of SQL gluing the values together like 'Red|L', 'Red|M', 'Red|H' and removing duplicates of those. That is why this returns more rows than DISTINCT Color or DISTINCT Class alone.</p><p class="pin"><span aria-hidden="true">📍</span> DISTINCT works on the whole row you select, so two columns give one row per unique pair.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>6. Distinct on two columns. More rows than 4 or 5. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM (SELECT DISTINCT Color FROM Production.Product) t;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A check on the numbers. The inner query (a subquery) returns the distinct colours; the outer COUNT(*) counts those rows. The 't' after the brackets is an alias: SQL Server requires a name for a subquery used in FROM.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>6. Distinct on two columns. More rows than 4 or 5. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM (SELECT DISTINCT Class FROM Production.Product) t;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Counts the distinct classes in the same way.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>6. Distinct on two columns. More rows than 4 or 5. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM (SELECT DISTINCT Color, Class FROM Production.Product) t;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Counts the distinct (Color, Class) pairs. Compare the three numbers: the pair count is bigger than either single-column count, which proves DISTINCT works on whole rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>7. Count of distinct values</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(DISTINCT Color) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>COUNT(DISTINCT Color) returns 9, while SELECT DISTINCT Color returned 10 rows. The difference is NULL: aggregate functions such as COUNT ignore NULL values, but DISTINCT in a SELECT list keeps NULL as one row.</p><p class="pin"><span aria-hidden="true">📍</span> COUNT(DISTINCT) does not count NULL. Compare with the 10 rows from drill 4.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>8. Arithmetic and an alias</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice, ListPrice * 1.17 AS PriceWithTax FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>You can do maths in the SELECT list. ListPrice * 1.17 adds 17% tax to every price. AS PriceWithTax gives the calculated column a name (an alias); without it SSMS shows '(No column name)'. Products with ListPrice 0 are components used to build bikes, not items sold to customers.</p><p class="pin"><span aria-hidden="true">📍</span> Some products have ListPrice 0. Those are components, not sold items.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>9. String concatenation</h3></div>
+        <pre><code class="language-sql">SELECT FirstName + ' ' + LastName AS FullName FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The + operator joins text together. Here the first name, a space, and the last name become one FullName column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>9. String concatenation <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT FirstName + ' ' + MiddleName + ' ' + LastName AS FullName FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Adding MiddleName turns many full names into NULL. MiddleName is NULL for lots of people, and with the + operator anything combined with NULL becomes NULL. This is the NULL rule. Day 3 shows the fix: CONCAT() treats NULL as an empty string.</p><p class="pin"><span aria-hidden="true">📍</span> MiddleName is NULL for many people, and anything + NULL is NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>10. SELECT with no table</h3></div>
+        <pre><code class="language-sql">SELECT 'Hello' AS Greeting, 2 + 2 AS Answer;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>In SQL Server a SELECT does not need a FROM clause. This is handy for testing expressions, functions or calculations quickly. It returns exactly one row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>1. TOP replaces LIMIT</h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 * FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Other databases (MySQL, PostgreSQL) use LIMIT 3 at the end of the query. SQL Server uses TOP 3 straight after SELECT instead. Without an ORDER BY the 'top' rows are simply whichever rows SQL Server reads first, so the order is not guaranteed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>1. TOP replaces LIMIT <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 PERCENT * FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TOP n PERCENT returns a percentage of the rows instead of a fixed number. 10 percent of 504 products is 50.4, which SQL Server rounds up to 51 rows.</p><p class="pin"><span aria-hidden="true">📍</span> Shows 10 percent of the rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">51 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>2. Break it on purpose. Read each error.</h3></div>
+        <pre><code class="language-sql">SELECT * FROM Production.Prodct;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 208: Invalid object name. The table name is misspelled (Prodct instead of Product), so SQL Server cannot find it. Reading error messages carefully is a key skill: the message tells you exactly which name is wrong.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Invalid object name 'Production.Prodct'.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>2. Break it on purpose. Read each error. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Nmae FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 207: Invalid column name. The table exists, but it has no column called Nmae. A 207 error always means a column problem; a 208 error means a table or view problem.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Invalid column name 'Nmae'.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>2. Break it on purpose. Read each error. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT * FROM Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 208 again, but this time the spelling is right. The schema is missing. Without a schema SQL Server looks in dbo (the default schema), and there is no dbo.Product. In AdventureWorks you must always write Production.Product.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Invalid object name 'Product'.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>3. Ask the database about itself</h3></div>
+        <pre><code class="language-sql">EXEC sp_help 'Production.Product';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>sp_help is a built-in stored procedure that describes an object. For a table it returns several result sets: the owner and creation date, every column with its data type and whether it allows NULL, the identity column, indexes and constraints. It is the quickest way to learn a table's structure.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Several result sets describing the table</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>3. Ask the database about itself <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COLUMN_NAME, DATA_TYPE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'Production' AND TABLE_NAME = 'Product';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INFORMATION_SCHEMA views are standard system views that describe the database. COLUMNS has one row per column of every table; the WHERE clause narrows it to Production.Product. This returns the 25 columns and their data types as a normal result you can filter and sort.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">25 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>How many tables per schema</h3></div>
+        <pre><code class="language-sql">SELECT TABLE_SCHEMA, COUNT(*) AS Tables
+FROM INFORMATION_SCHEMA.TABLES
+GROUP BY TABLE_SCHEMA;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INFORMATION_SCHEMA.TABLES lists every table and view. GROUP BY TABLE_SCHEMA puts the rows into one group per schema and COUNT(*) counts each group, so you see how many objects each schema holds. GROUP BY is covered properly later in the course.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows</span></figcaption>
+        </figure>
+      </article></section>
+  
+  <nav class="pager"><span></span><a href="../day2/">Day 2: WHERE, every operator, NULL, LIKE →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
