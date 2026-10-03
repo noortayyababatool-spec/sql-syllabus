@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 4: Aggregate functions · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/" aria-current="page">Day 4</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 4</p>
+  <h1>Day 4: Aggregate functions</h1>
+  <p class="meta">Fri 2 October 2026 · 31 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> answer any how-many, how-much, highest, lowest, average question in one query, and know exactly how each function treats NULL.</p>
+    <p><strong>Read:</strong> SQL Aggregate Functions, SQL Count, SQL Sum, SQL Avg, SQL Min and Max.</p>
+  </div>
+  
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>17</span></li><li><a href="#stretch">Stretch</a> <span>9</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. COUNT(*) vs COUNT(column). Different numbers. Why?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An aggregate function turns many rows into one value. COUNT(*) counts rows, whatever is in them, so it returns all 504 products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. COUNT(*) vs COUNT(column). Different numbers. Why? <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(Color) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>COUNT(column) counts only the rows where that column is not NULL. 248 products have no colour, so the answer is 256, not 504. This is the key rule of the day: every aggregate except COUNT(*) ignores NULL.</p><p class="pin"><span aria-hidden="true">📍</span> COUNT(column) skips NULLs: 504 rows, but only 256 have a colour.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>2. Distinct count</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(DISTINCT TerritoryID) FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>COUNT(DISTINCT column) counts how many different values appear. 31,465 orders are spread across 10 different sales territories.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>3. SUM of quantity, then revenue</h3></div>
+        <pre><code class="language-sql">SELECT SUM(OrderQty) FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SUM adds up a numeric column. SalesOrderDetail has one row per product on an order, so this is the total number of items ever sold: 274,914.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>3. SUM of quantity, then revenue <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SUM(OrderQty * UnitPrice) AS Revenue FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SUM can add up a calculation. For every order line, quantity x unit price is worked out first, then all the results are summed: about 110.37 million before discounts.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>3. SUM of quantity, then revenue <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SUM(LineTotal) AS Revenue FROM Sales.SalesOrderDetail;   -- LineTotal already includes discount. Compare.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LineTotal is a computed column equal to quantity x unit price x (1 - discount). The sum is about 109.85 million, roughly 527,508 less than the previous query. The difference is the total discount given to customers. Always check whether a stored total already includes discounts before calculating your own.</p><p class="pin"><span aria-hidden="true">📍</span> LineTotal is about 527,508 lower: that is the total discount given.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>4. AVG overall and filtered</h3></div>
+        <pre><code class="language-sql">SELECT AVG(ListPrice) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>AVG returns the mean: the sum divided by the number of non-NULL values. Over all 504 products the average price is 438.67.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>4. AVG overall and filtered <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT AVG(ListPrice) FROM Production.Product WHERE ListPrice &gt; 0;   -- zeros drag the average down</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>200 products are components with ListPrice 0. A zero is a real value, so AVG includes it and the average drops. Filtering them out first gives the true average selling price: 727.26. The WHERE runs before the aggregate.</p><p class="pin"><span aria-hidden="true">📍</span> 200 components priced 0 pull the average from 727.26 down to 438.67.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>5. MIN and MAX with aliases</h3></div>
+        <pre><code class="language-sql">SELECT MIN(ListPrice) AS Cheapest, MAX(ListPrice) AS Dearest FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>MIN and MAX return the smallest and largest value. Several aggregates can be calculated in one SELECT, each with its own alias. Cheapest product for sale: 2.29 (the patch kit). Dearest: 3578.27 (the Road-150 bikes).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>6. MIN and MAX on dates and text</h3></div>
+        <pre><code class="language-sql">SELECT MIN(OrderDate) AS FirstOrder, MAX(OrderDate) AS LastOrder FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>MIN and MAX work on dates too: the earliest date is the minimum, the latest is the maximum. AdventureWorks orders run from 31 May 2011 to 30 June 2014.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>6. MIN and MAX on dates and text <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT MIN(FirstName), MAX(FirstName) FROM Person.Person;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>On text, MIN and MAX use alphabetical order: MIN is the first name alphabetically ('A.'), MAX is the last ('Zoe'). Punctuation sorts before letters, which is why 'A.' beats 'Aaron'. No alias was given, so SSMS shows '(No column name)'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>7. AVG ignores NULL. The most common reporting mistake.</h3></div>
+        <pre><code class="language-sql">SELECT AVG(Weight) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Only 205 of the 504 products have a weight. AVG ignores the 299 NULLs and divides by 205, giving 74.07: the average weight of products whose weight is known.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>7. AVG ignores NULL. The most common reporting mistake. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT AVG(ISNULL(Weight, 0)) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ISNULL(Weight, 0) turns every NULL into 0 before averaging, so AVG now divides by all 504 rows and the answer falls to 30.13. Neither answer is wrong; they answer different questions. In a report, decide whether a missing value should count as zero or be left out.</p><p class="pin"><span aria-hidden="true">📍</span> Same column, two answers: 74.07 ignoring NULLs, 30.13 treating NULL as 0. Decide which one the question really means.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>8. Filtered total</h3></div>
+        <pre><code class="language-sql">SELECT SUM(TotalDue) AS Revenue2013 FROM Sales.SalesOrderHeader
+WHERE OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE picks the rows first (orders placed in 2013), then SUM adds up their TotalDue: about 48.97 million. The date range uses the safe pattern from Day 2: start inclusive, next year exclusive.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>9. Count a condition two ways</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM Sales.SalesOrderHeader WHERE OnlineOrderFlag = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The simple way: filter with WHERE, then count. 27,659 orders were placed online.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>9. Count a condition two ways <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SUM(CASE WHEN OnlineOrderFlag = 1 THEN 1 ELSE 0 END) AS OnlineOrders,
+       SUM(CASE WHEN OnlineOrderFlag = 0 THEN 1 ELSE 0 END) AS StoreOrders
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CASE gives each row a 1 if it matches and 0 if not; SUM adds up the 1s. This is called conditional aggregation. Its advantage is that several counts appear as columns in one row: 27,659 online and 3,806 store orders, which add up to all 31,465. A WHERE clause can only filter for one condition at a time.</p><p class="pin"><span aria-hidden="true">📍</span> SUM(CASE ...) counts several conditions side by side in one pass over the table.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>10. Zero rows match. What do COUNT and MAX return?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*), MAX(ListPrice) FROM Production.Product WHERE ListPrice &gt; 100000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>No product costs more than 100,000, so no rows pass the WHERE. An aggregate query without GROUP BY still returns exactly one row. COUNT returns 0, because counting nothing is zero. MAX, MIN, SUM and AVG return NULL, because there is no value to report. Code that reads these results must handle that NULL.</p><p class="pin"><span aria-hidden="true">📍</span> No rows match, yet one row comes back: COUNT gives 0, MAX gives NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>The classic error. Day 6 fixes it.</h3></div>
+        <pre><code class="language-sql">SELECT Name, MAX(ListPrice) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 8120. MAX collapses 504 rows into one value, but Name still has 504 different values. SQL Server cannot put 504 names next to one number, so it refuses. Every column in the SELECT must either be inside an aggregate or be listed in GROUP BY. To get the name of the dearest product today, use SELECT TOP 1 Name, ListPrice ... ORDER BY ListPrice DESC (Day 3).</p><p class="pin"><span aria-hidden="true">📍</span> Error 8120: a plain column cannot sit next to an aggregate without GROUP BY.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Column 'Production.Product.Name' is invalid in the select list because it is not contained in either an aggregate function or the GROUP BY clause.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Integer division in AVG</h3></div>
+        <pre><code class="language-sql">SELECT AVG(OrderQty) FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>OrderQty is an integer column, so AVG returns an integer and throws the decimals away: 2 instead of the real 2.27. There is no warning, which makes this an easy mistake in reports.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Integer division in AVG <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT AVG(OrderQty * 1.0) FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Multiplying by 1.0 turns each quantity into a decimal before averaging, so the result keeps its decimals: 2.266079. This is the quickest fix.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Integer division in AVG <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT AVG(CAST(OrderQty AS DECIMAL(10,2))) FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CAST to DECIMAL does the same job more explicitly: the reader can see exactly which data type is intended. DECIMAL(10,2) means up to 10 digits, 2 of them after the decimal point.</p><p class="pin"><span aria-hidden="true">📍</span> Same 2.266079 as * 1.0. CAST is the more explicit way to say what you mean.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Overflow protection on big sums</h3></div>
+        <pre><code class="language-sql">SELECT SUM(CAST(OrderQty AS BIGINT)) FROM Sales.SalesOrderDetail;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SUM of an INT column returns INT, which tops out at about 2.1 billion. Beyond that the query fails with an arithmetic overflow error. Casting to BIGINT first raises the limit to about 9.2 quintillion. Here the total is only 274,914, so both work, but on very large tables this cast prevents failures.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Concatenate a column into one string</h3></div>
+        <pre><code class="language-sql">SELECT STRING_AGG(Name, ', ') WITHIN GROUP (ORDER BY Name) FROM Sales.SalesTerritory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>STRING_AGG is an aggregate for text: it glues the values from many rows into one string, with ', ' between them. WITHIN GROUP (ORDER BY Name) sets the order, so the 10 territories come out alphabetically: Australia, Canada, Central, ... United Kingdom.</p><p class="pin"><span aria-hidden="true">📍</span> The SSMS grid cuts long text short. The full value is: Australia, Canada, Central, France, Germany, Northeast, Northwest, Southeast, Southwest, United Kingdom.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>COUNT(*) vs COUNT(1) vs COUNT(ProductID). Same result, same speed.</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*), COUNT(1), COUNT(ProductID) FROM Production.Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>All three return 504. COUNT(1) counts a constant 1 per row, which is never NULL, so it behaves like COUNT(*). ProductID is the primary key and can never be NULL, so it gives the same answer too. SQL Server runs all three the same way; COUNT(*) is the clearest to read.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>Statistics exist</h3></div>
+        <pre><code class="language-sql">SELECT STDEV(ListPrice), VAR(ListPrice) FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>STDEV (standard deviation) measures how spread out the values are; VAR (variance) is the standard deviation squared. A standard deviation of about 884.82 against an average of 727.26 shows prices vary a lot, from a 2.29 patch kit to 3578.27 bikes.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>One-row dashboard</h3></div>
+        <pre><code class="language-sql">SELECT
+    COUNT(*) AS Orders,
+    SUM(TotalDue) AS Revenue,
+    AVG(TotalDue) AS AvgOrderValue,
+    MIN(OrderDate) AS FirstOrder,
+    MAX(OrderDate) AS LastOrder,
+    COUNT(DISTINCT CustomerID) AS Customers
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Many aggregates in one SELECT give a one-row business summary: 31,465 orders, about 123.2 million in revenue, an average order of 3,916, from 31 May 2011 to 30 June 2014, placed by 19,119 different customers. SQL Server reads the table once and calculates them all together.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>Q1. How many products have no weight</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS NoWeight FROM Production.Product WHERE Weight IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Filter the missing weights with IS NULL, then count the rows with COUNT(*): 299. COUNT(Weight) would not work here, because it skips exactly those NULL rows and would return 0. Check: 299 + 205 = 504.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>Q2. Total quantity sold of ProductID 776</h3></div>
+        <pre><code class="language-sql">SELECT SUM(OrderQty) AS TotalSold FROM Sales.SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE keeps only the order lines for product 776, then SUM adds their quantities: 634 units.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q29">
+        <div class="q-head"><span class="num">#29</span><h3>Q3. Average list price of Class 'H' products, rounded to 2 decimals</h3></div>
+        <pre><code class="language-sql">SELECT CAST(ROUND(AVG(ListPrice), 2) AS DECIMAL(10,2)) AS AvgPriceH
+FROM Production.Product WHERE Class = 'H';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>AVG gives the average for high-class products. ROUND(..., 2) rounds it to 2 decimals, and the CAST to DECIMAL(10,2) also displays it with exactly 2 decimals (money would otherwise show 4). Answer: 1679.50.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_29.png" aria-label="Enlarge screenshot of query 29"><img src="shots/q_29.png" loading="lazy" alt="SSMS screenshot: query 29 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q30">
+        <div class="q-head"><span class="num">#30</span><h3>Q4. The date range of online orders</h3></div>
+        <pre><code class="language-sql">SELECT MIN(OrderDate) AS FirstOnline, MAX(OrderDate) AS LastOnline
+FROM Sales.SalesOrderHeader WHERE OnlineOrderFlag = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE keeps the online orders, then MIN and MAX give the first and last dates: 31 May 2011 to 30 June 2014, the same range as all orders.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_30.png" aria-label="Enlarge screenshot of query 30"><img src="shots/q_30.png" loading="lazy" alt="SSMS screenshot: query 30 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q31">
+        <div class="q-head"><span class="num">#31</span><h3>Q5. Orders in territory 1 and territory 4 as two columns</h3></div>
+        <pre><code class="language-sql">SELECT SUM(CASE WHEN TerritoryID = 1 THEN 1 ELSE 0 END) AS Territory1,
+       SUM(CASE WHEN TerritoryID = 4 THEN 1 ELSE 0 END) AS Territory4
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two counts as two columns in one row is the conditional aggregation pattern from drill 9. Each CASE marks the rows of one territory with 1, and SUM counts them: 4,594 orders in territory 1 (Northwest) and 6,224 in territory 4 (Southwest).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_31.png" aria-label="Enlarge screenshot of query 31"><img src="shots/q_31.png" loading="lazy" alt="SSMS screenshot: query 31 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>The NULL rules for aggregates:</strong> <code>COUNT(*)</code> counts every row. <code>COUNT(column)</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code> and <code>MAX</code> skip NULLs. With no matching rows, <code>COUNT</code> returns 0 and the others return NULL.</div>
+  <nav class="pager"><a href="../day3/">← Day 3: ORDER BY, TOP, OFFSET-FETCH, functions</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
