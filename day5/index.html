@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 5: Joins · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/" aria-current="page">Day 5</a><a href="../day6/">Day 6</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 5</p>
+  <h1>Day 5: Joins</h1>
+  <p class="meta">Mon 5 October 2026 · 28 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> combine any two to four tables correctly, and know from the row count alone whether your join is right.</p>
+    <p><strong>Read:</strong> SQL Joins, SQL Inner Join, SQL Left Join, SQL Right Join, SQL Full Join, SQL Self Join.</p>
+  </div>
+  <div class="tip"><strong>Before every join:</strong> run <code>SELECT COUNT(*)</code> on both tables and predict the result count. Check it after. A count you did not predict means the join condition is wrong.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>15</span></li><li><a href="#stretch">Stretch</a> <span>8</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Before joining: count both tables and predict</h3></div>
+        <pre><code class="language-sql">SELECT (SELECT COUNT(*) FROM Sales.SalesOrderHeader) AS HeaderRows,
+       (SELECT COUNT(*) FROM Sales.SalesOrderDetail) AS DetailRows;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The habit for every join: count the tables first, then predict the result. There are 31,465 orders (headers) and 121,317 order lines (details). Every line belongs to exactly one order, so joining them should return one row per line: 121,317. If a join returns a number you did not predict, the join condition is wrong.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. Orders with their line items. Aliases from the start.</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, h.OrderDate, d.ProductID, d.OrderQty, d.LineTotal
+FROM Sales.SalesOrderHeader h
+INNER JOIN Sales.SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INNER JOIN combines rows from two tables where the ON condition matches. Here each order line is matched to its order through SalesOrderID, so the header columns (OrderDate) appear next to the line columns (ProductID, OrderQty). The order date repeats once for every line of the same order. h and d are table aliases; with two tables, every column should be prefixed so the reader knows where it comes from.</p><p class="pin"><span aria-hidden="true">📍</span> 121,317 rows, exactly as predicted: one row per order line.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">121,317 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>2. Products with subcategory name</h3></div>
+        <pre><code class="language-sql">SELECT p.Name AS Product, s.Name AS Subcategory
+FROM Production.Product p
+INNER JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID;
+-- Fewer rows than Product. Some products have no subcategory.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Product only stores a subcategory number; the name lives in ProductSubcategory. The join looks it up. Only 295 of the 504 products come back, because INNER JOIN drops rows with no match: 209 products have a NULL ProductSubcategoryID, and NULL never equals anything.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">295 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>3. Same with LEFT JOIN. Find the ones with NULL subcategory.</h3></div>
+        <pre><code class="language-sql">SELECT p.Name AS Product, s.Name AS Subcategory
+FROM Production.Product p
+LEFT JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+WHERE s.ProductSubcategoryID IS NULL;
+-- This is the anti-join. You will use it every week of your career.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LEFT JOIN keeps every row of the left table (Product). Where there is no matching subcategory, the subcategory columns are filled with NULL. The WHERE then keeps only those unmatched rows: the 209 products with no subcategory. This 'find what is missing' pattern is called an anti-join.</p><p class="pin"><span aria-hidden="true">📍</span> Anti-join: LEFT JOIN, then keep only the rows where the right side is NULL. 295 + 209 = 504.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">209 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>4. Three tables: product, subcategory, category</h3></div>
+        <pre><code class="language-sql">SELECT p.Name AS Product, s.Name AS Subcategory, c.Name AS Category
+FROM Production.Product p
+JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Joins chain: product links to subcategory, and subcategory links to category. JOIN on its own means INNER JOIN. The result is still 295 rows, because every subcategory has a category, so the second join neither adds nor removes rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">295 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>5. Customer name on orders. Customer links to Person via PersonID.</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, h.OrderDate, pp.FirstName, pp.LastName
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Orders do not store names. The path is order -&gt; customer (CustomerID) -&gt; person (PersonID = BusinessEntityID). The plan expects fewer rows than the 31,465 orders, because store customers have no PersonID. The result below shows that is not true in this database.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>5. Customer name on orders. Customer links to Person via PersonID. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Swap to LEFT JOIN and count again
+SELECT COUNT(*) AS InnerRows FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID;
+
+SELECT COUNT(*) AS LeftRows FROM Sales.SalesOrderHeader h
+LEFT JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+LEFT JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two queries in one batch give two result grids. Both return 31,465, so here the INNER JOIN lost nothing. 701 customers have no PersonID, but none of them ever placed an order. The 3,806 store orders are linked to the store's contact person instead. Lesson: never assume a join drops or keeps rows; count and check.</p><p class="pin"><span aria-hidden="true">📍</span> Both counts are 31,465. In AdventureWorks2022 every store customer that ordered has a contact person, so INNER loses no rows here.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets, InnerRows = 31,465 and LeftRows = 31,465</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>6. Four tables: order, customer, person, territory, with a filter</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, pp.FirstName, pp.LastName, t.Name AS Territory, h.TotalDue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+WHERE t.CountryRegionCode = 'GB' AND h.TotalDue &gt; 5000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Four tables joined, then filtered. The joins run first and build wide rows; WHERE then keeps UK orders worth more than 5,000: 107 rows. A WHERE condition can use a column from any joined table (t.CountryRegionCode, h.TotalDue).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">107 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>7. RIGHT JOIN, then rewrite as LEFT with tables swapped. Same result.</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, s.Name
+FROM Production.ProductSubcategory s
+RIGHT JOIN Production.Product p ON p.ProductSubcategoryID = s.ProductSubcategoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>RIGHT JOIN keeps every row of the right table (Product, written second), with NULL subcategory where there is no match: all 504 products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>7. RIGHT JOIN, then rewrite as LEFT with tables swapped. Same result. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT p.Name, s.Name
+FROM Production.Product p
+LEFT JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Swapping the table order and using LEFT JOIN gives exactly the same 504 rows. Any RIGHT JOIN can be rewritten this way, and most teams use only LEFT JOIN so queries read the same way: the main table first.</p><p class="pin"><span aria-hidden="true">📍</span> Same 504 rows. A RIGHT JOIN is a LEFT JOIN with the tables swapped. Most teams only write LEFT JOIN.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>8. FULL OUTER JOIN. Territories and orders, all of both.</h3></div>
+        <pre><code class="language-sql">SELECT t.Name, COUNT(h.SalesOrderID) AS Orders
+FROM Sales.SalesTerritory t
+FULL OUTER JOIN Sales.SalesOrderHeader h ON t.TerritoryID = h.TerritoryID
+GROUP BY t.Name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FULL OUTER JOIN keeps unmatched rows from both sides: territories with no orders and orders with no territory. GROUP BY (covered on Day 6) then counts orders per territory. Here every order has a territory and every territory has orders, so the result is the same as an INNER JOIN: 10 rows. COUNT(h.SalesOrderID) is used instead of COUNT(*) so an empty territory would show 0, not 1.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>9. Self join: employees and their managers via the hierarchy</h3></div>
+        <pre><code class="language-sql">SELECT e.BusinessEntityID, pe.FirstName + ' ' + pe.LastName AS Employee, e.JobTitle,
+       pm.FirstName + ' ' + pm.LastName AS Manager
+FROM HumanResources.Employee e
+JOIN Person.Person pe ON e.BusinessEntityID = pe.BusinessEntityID
+LEFT JOIN HumanResources.Employee m ON e.OrganizationNode.GetAncestor(1) = m.OrganizationNode
+LEFT JOIN Person.Person pm ON m.BusinessEntityID = pm.BusinessEntityID
+ORDER BY e.OrganizationLevel, Employee;
+-- The CEO has NULL manager. LEFT JOIN keeps them.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A self join uses the same table twice with different aliases: e is the employee, m is the manager. OrganizationNode is a hierarchyid (a position in the org chart, like /6/1/); GetAncestor(1) returns the position one level up, which is the manager's position. Person is joined twice as well, once for each name. LEFT JOINs keep employees with no manager. In AdventureWorks2022 the CEO's OrganizationNode is NULL instead of the root '/', so his 6 direct reports also show NULL. The next query fixes that.</p><p class="pin"><span aria-hidden="true">📍</span> Not only the CEO: 7 people have NULL manager. The CEO's OrganizationNode is NULL, so the 6 vice presidents cannot find him.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">290 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>9. Self join: employees and their managers via the hierarchy <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fix: level-1 employees report to the CEO, whose OrganizationNode is NULL
+SELECT e.BusinessEntityID, pe.FirstName + ' ' + pe.LastName AS Employee, e.JobTitle,
+       pm.FirstName + ' ' + pm.LastName AS Manager
+FROM HumanResources.Employee e
+JOIN Person.Person pe ON e.BusinessEntityID = pe.BusinessEntityID
+LEFT JOIN HumanResources.Employee m
+       ON m.OrganizationNode = e.OrganizationNode.GetAncestor(1)
+       OR (e.OrganizationLevel = 1 AND m.OrganizationNode IS NULL)
+LEFT JOIN Person.Person pm ON m.BusinessEntityID = pm.BusinessEntityID
+ORDER BY e.OrganizationLevel, Employee;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The ON clause gets a second rule with OR: a level-1 employee is matched to the one employee whose OrganizationNode is NULL, the CEO. Now the 6 vice presidents show Ken Sánchez as manager, and only Ken himself has NULL. Still 290 rows: one per employee.</p><p class="pin"><span aria-hidden="true">📍</span> Now only the CEO, Ken Sánchez, has NULL manager. A join condition can contain OR.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">290 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>10. Filter in ON vs WHERE. Row counts differ. WHERE turns LEFT into INNER.</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, d.SalesOrderID
+FROM Production.Product p
+LEFT JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID AND d.OrderQty &gt; 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The quantity filter is part of the ON condition, so it only decides which order lines match. Every product is still kept: products with no line of more than 10 units appear once with NULL SalesOrderID. Result: 2,456 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2,456 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>10. Filter in ON vs WHERE. Row counts differ. WHERE turns LEFT into INNER. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT p.Name, d.SalesOrderID
+FROM Production.Product p
+LEFT JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID
+WHERE d.OrderQty &gt; 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Here the filter is in WHERE, which runs after the join. For products with no sales, d.OrderQty is NULL, and NULL &gt; 10 is not true, so those rows are thrown away. The LEFT JOIN now behaves like an INNER JOIN: 2,066 rows, exactly the number of order lines with more than 10 units. Rule: a filter on the right-hand table of a LEFT JOIN belongs in ON, unless you really want the unmatched rows gone.</p><p class="pin"><span aria-hidden="true">📍</span> 2,066 rows instead of 2,456: the WHERE removed the 390 NULL rows, turning the LEFT JOIN into an INNER JOIN.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2,066 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Products never sold. Anti-join.</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID, p.Name
+FROM Production.Product p
+LEFT JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID
+WHERE d.SalesOrderDetailID IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The anti-join again: keep every product, then keep only those with no matching order line. 238 products have never been sold; 266 have. 238 + 266 = 504. Check a column that can never be NULL in a real match, such as the key SalesOrderDetailID.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">238 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>CROSS JOIN. Territories times categories. Small tables only.</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory, c.Name AS Category
+FROM Sales.SalesTerritory t CROSS JOIN Production.ProductCategory c;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CROSS JOIN pairs every row of one table with every row of the other, with no ON condition: 10 territories x 4 categories = 40 rows. Useful to build a grid of every combination (for example, to report zero sales). On big tables it explodes: 31,465 orders x 121,317 lines would be 3.8 billion rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">40 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Non-equality join: which price band is each product in</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, p.ListPrice,
+       CASE WHEN p.ListPrice &lt; 100 THEN 'Low' WHEN p.ListPrice &lt; 1000 THEN 'Mid' ELSE 'High' END AS Band
+FROM Production.Product p WHERE p.ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CASE labels each product by checking conditions in order and using the first that is true. A price under 100 is Low, under 1000 is Mid, anything else is High: 90 Low, 128 Mid, 86 High. With a price-band table, the same result could come from a non-equality join such as ON p.ListPrice &gt;= b.MinPrice AND p.ListPrice &lt; b.MaxPrice.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">304 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Forget the ON clause. Read the error.</h3></div>
+        <pre><code class="language-sql">SELECT * FROM Sales.SalesTerritory t JOIN Production.ProductCategory c;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>JOIN (INNER JOIN) must be followed by ON. Without it SQL Server reaches the semicolon while still expecting ON, so it reports error 102: incorrect syntax near ';'. The message points to where the parser gave up, not the missing word, so look just before the position it names.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Incorrect syntax near ';'.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Forget the ON clause. Read the error. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- ON 1 = 1 is always true, so it becomes a cross join
+SELECT t.Name AS Territory, c.Name AS Category
+FROM Sales.SalesTerritory t JOIN Production.ProductCategory c ON 1 = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>1 = 1 is true for every pair of rows, so every territory matches every category: the same 40 rows as CROSS JOIN. A join condition that is accidentally always true (or matches on the wrong column) causes the same row explosion, which is why you predict the row count first.</p><p class="pin"><span aria-hidden="true">📍</span> ON 1 = 1 matches every pair, so this gives the same 40 rows as CROSS JOIN.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">40 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Duplication from a join. A product with 100 sales appears 100 times.</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, COUNT(*) AS Rows
+FROM Production.Product p
+JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID
+GROUP BY p.Name ORDER BY Rows DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Joining a product to its order lines repeats the product once per line. The Water Bottle - 30 oz. appears on 4,688 lines, so after the join it is 4,688 rows. This is why SUM(p.ListPrice) after such a join would be wildly inflated: always ask 'one row per what?' after a join.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">266 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Ambiguous column. No prefix on ProductID after joining two tables that have it.</h3></div>
+        <pre><code class="language-sql">SELECT ProductID FROM Production.Product p JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 209: ambiguous column name. Both tables have a ProductID column, so SQL Server does not know which one you mean, even though here they hold the same value. The fix is a prefix: p.ProductID or d.ProductID. Prefixing every column in a join avoids this error entirely.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Ambiguous column name 'ProductID'.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Salesperson name on orders. Employee to Person again.</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, pp.FirstName + ' ' + pp.LastName AS SalesPerson, h.TotalDue
+FROM Sales.SalesOrderHeader h
+LEFT JOIN Person.Person pp ON h.SalesPersonID = pp.BusinessEntityID;
+-- Most orders have NULL salesperson. Online orders have none.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SalesPersonID is the salesperson's BusinessEntityID, so it can join straight to Person.Person. LEFT JOIN keeps all 31,465 orders. 27,659 of them have no salesperson, exactly the number of online orders from Day 4: a person sells only to stores. An INNER JOIN would have silently dropped 88% of the orders.</p><p class="pin"><span aria-hidden="true">📍</span> 27,659 orders have NULL salesperson, exactly the number of online orders.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>Q1. Every territory and how many orders it has, including zero</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory, COUNT(h.SalesOrderID) AS Orders
+FROM Sales.SalesTerritory t
+LEFT JOIN Sales.SalesOrderHeader h ON t.TerritoryID = h.TerritoryID
+GROUP BY t.Name
+ORDER BY Orders DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Start from the table that must be complete (territories) and LEFT JOIN the orders, so a territory with no orders would still appear. COUNT(h.SalesOrderID) counts only real matches, giving 0 rather than 1 for an empty territory. Australia leads with 6,843 orders; Central has the fewest, 385.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>Q2. The line items of order 43659 with product names and line totals</h3></div>
+        <pre><code class="language-sql">SELECT d.SalesOrderDetailID, p.Name AS Product, d.OrderQty, d.UnitPrice, d.LineTotal
+FROM Sales.SalesOrderDetail d
+JOIN Production.Product p ON d.ProductID = p.ProductID
+WHERE d.SalesOrderID = 43659;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Filter the order lines to one order, then join Product for the names. Order 43659 has 12 lines totalling 20,565.62. The order's TotalDue is 23,153.23 because it also includes tax and freight.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>Q3. Customers who ordered anything in the Bikes category</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT h.CustomerID
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID
+JOIN Production.Product p ON d.ProductID = p.ProductID
+JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID
+WHERE c.Name = 'Bikes';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Five tables chained from order to category, filtered to Bikes. One customer can buy many bikes, so the joins repeat customers; DISTINCT reduces the result to one row per customer: 9,719 customers.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">9,719 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>Q4. Employees whose job title contains 'Manager', with their manager's name</h3></div>
+        <pre><code class="language-sql">SELECT pe.FirstName + ' ' + pe.LastName AS Employee, e.JobTitle,
+       pm.FirstName + ' ' + pm.LastName AS Manager
+FROM HumanResources.Employee e
+JOIN Person.Person pe ON e.BusinessEntityID = pe.BusinessEntityID
+LEFT JOIN HumanResources.Employee m
+       ON m.OrganizationNode = e.OrganizationNode.GetAncestor(1)
+       OR (e.OrganizationLevel = 1 AND m.OrganizationNode IS NULL)
+LEFT JOIN Person.Person pm ON m.BusinessEntityID = pm.BusinessEntityID
+WHERE e.JobTitle LIKE '%Manager%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The fixed self join from drill 9 with a LIKE filter on the job title: 17 managers. Because of the fix, David Bradley (Marketing Manager), who reports straight to the CEO, correctly shows Ken Sánchez instead of NULL.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">17 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>Q5. Orders whose customer is a store, not a person</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, h.OrderDate, st.Name AS Store, h.TotalDue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+JOIN Sales.Store st ON c.StoreID = st.BusinessEntityID
+WHERE c.StoreID IS NOT NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A store customer has a StoreID, which links to Sales.Store for the store name. The result is 3,806 orders, exactly the store (non-online) orders counted on Day 4. The WHERE is technically redundant, because the INNER JOIN to Store already drops customers with no StoreID, but it states the intent clearly.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3,806 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>Join cheat sheet:</strong> <code>INNER JOIN</code> keeps only matches. <code>LEFT JOIN</code> keeps every row of the first table, with NULLs where nothing matched. <code>LEFT JOIN ... WHERE right.key IS NULL</code> is the anti-join (rows with no match). A filter on the right-hand table belongs in <code>ON</code>; in <code>WHERE</code> it turns a LEFT JOIN into an INNER JOIN.</div>
+  <nav class="pager"><a href="../day4/">← Day 4: Aggregate functions</a><a href="../day6/">Day 6: GROUP BY, HAVING, subqueries, CASE →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

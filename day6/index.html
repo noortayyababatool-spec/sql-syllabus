@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 6: GROUP BY, HAVING, subqueries, CASE · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/" aria-current="page">Day 6</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 6</p>
+  <h1>Day 6: GROUP BY, HAVING, subqueries, CASE</h1>
+  <p class="meta">Tue 6 October 2026 · 29 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> write the report queries a manager asks for by name, and know the order SQL runs your clauses in.</p>
+    <p><strong>Read:</strong> SQL Group By, SQL Having, SQL Exists, SQL Any All, SQL Case.</p>
+  </div>
+  <div class="tip"><strong>Memorise the logical order:</strong> <code>FROM</code> → <code>JOIN</code> → <code>WHERE</code> → <code>GROUP BY</code> → <code>HAVING</code> → <code>SELECT</code> → <code>DISTINCT</code> → <code>ORDER BY</code> → <code>TOP/OFFSET</code>. Every GROUP BY error is explained by it: WHERE cannot use an aggregate because groups do not exist yet, and GROUP BY cannot use a SELECT alias because SELECT has not run yet.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>15</span></li><li><a href="#stretch-subqueries-and-ctes">Stretch: subqueries and CTEs</a> <span>5</span></li><li><a href="#stretch-case-and-pivots">Stretch: CASE and pivots</a> <span>3</span></li><li><a href="#self-test">Self-test</a> <span>6</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Orders per territory, then sorted</h3></div>
+        <pre><code class="language-sql">SELECT TerritoryID, COUNT(*) AS Orders
+FROM Sales.SalesOrderHeader
+GROUP BY TerritoryID
+ORDER BY Orders DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>GROUP BY puts the rows into one group per TerritoryID, and the aggregate (COUNT) is calculated once per group, so you get one row per territory instead of one total. ORDER BY can use the alias Orders because ORDER BY runs after SELECT. Territory 9 (Australia) has the most orders, 6,843.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Product count and average price per colour</h3></div>
+        <pre><code class="language-sql">SELECT Color, COUNT(*) AS Products, AVG(ListPrice) AS AvgPrice
+FROM Production.Product WHERE ListPrice &gt; 0 GROUP BY Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE removes the 0-priced components first, then the remaining products are grouped by colour and each group gets a count and an average. Products with no colour are grouped together in a NULL group, just as DISTINCT did on Day 1. Red products are the most expensive on average, at 1,401.95.</p><p class="pin"><span aria-hidden="true">📍</span> NULL colours form their own group (59 products). GROUP BY treats all NULLs as one value.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Revenue per customer, top 5</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 h.CustomerID, SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h GROUP BY h.CustomerID ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Group the orders by customer, sum each customer's TotalDue, sort the totals from highest, and keep the first 5. TOP runs last of all, after the sort. Customer 29818 is the biggest, at 989,184.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Revenue per month, two ways</h3></div>
+        <pre><code class="language-sql">SELECT YEAR(OrderDate) AS Yr, MONTH(OrderDate) AS Mth, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+GROUP BY YEAR(OrderDate), MONTH(OrderDate) ORDER BY Yr, Mth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>You can group by an expression, not just a column. Grouping by both YEAR and MONTH gives one row per calendar month: 38 months from May 2011 to June 2014. Grouping by MONTH alone would wrongly merge January 2012 with January 2013.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>4. Revenue per month, two ways <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+GROUP BY FORMAT(OrderDate, 'yyyy-MM') ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FORMAT turns each date into a 'yyyy-MM' text label and the rows are grouped by that label. The totals match the first query exactly. The label sorts correctly as text because the year comes first. FORMAT is slow on big tables, so the YEAR/MONTH version is usually preferred.</p><p class="pin"><span aria-hidden="true">📍</span> Same 38 rows. The first version is faster; FORMAT is easier to read but slower on large tables.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>5. HAVING. Put the condition in WHERE and read the error.</h3></div>
+        <pre><code class="language-sql">SELECT TerritoryID, COUNT(*) AS Orders
+FROM Sales.SalesOrderHeader
+WHERE COUNT(*) &gt; 3000
+GROUP BY TerritoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 147: an aggregate may not appear in the WHERE clause. The logical order explains it: WHERE runs before GROUP BY, so when WHERE is checked the groups do not exist yet and there is nothing to count.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): An aggregate may not appear in the WHERE clause unless it is in a subquery contained in a HAVING clause or a select list, and the column being aggregated is an outer reference.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>5. HAVING. Put the condition in WHERE and read the error. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TerritoryID, COUNT(*) AS Orders
+FROM Sales.SalesOrderHeader
+GROUP BY TerritoryID HAVING COUNT(*) &gt; 3000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>HAVING is the WHERE for groups: it runs after GROUP BY, so it can use aggregates. 5 of the 10 territories have more than 3,000 orders. Note the order of rows is not sorted, because there is no ORDER BY.</p><p class="pin"><span aria-hidden="true">📍</span> WHERE filters rows before grouping. HAVING filters groups after grouping.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>6. Two HAVING conditions</h3></div>
+        <pre><code class="language-sql">SELECT Color, COUNT(*) AS Products, AVG(ListPrice) AS AvgPrice
+FROM Production.Product WHERE ListPrice &gt; 0
+GROUP BY Color HAVING AVG(ListPrice) &gt; 500 AND COUNT(*) &gt;= 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>HAVING can combine conditions with AND or OR, just like WHERE. Only colours with an average price above 500 and at least 10 products survive: Black, Blue, Red, Silver and Yellow.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>7. Two grouping columns</h3></div>
+        <pre><code class="language-sql">SELECT YEAR(OrderDate) AS Yr, OnlineOrderFlag, COUNT(*) AS Orders
+FROM Sales.SalesOrderHeader
+GROUP BY YEAR(OrderDate), OnlineOrderFlag ORDER BY Yr, OnlineOrderFlag;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>With two grouping columns you get one row per combination: 4 years x 2 flags = 8 rows. It shows the business moving online: in 2013, 12,584 online orders against 1,598 store orders.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>8. Every clause in one query</h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 h.CustomerID, SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+WHERE h.OrderDate &gt;= '2013-01-01'
+GROUP BY h.CustomerID
+HAVING SUM(h.TotalDue) &gt; 50000
+ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Read it in the order SQL runs it: FROM takes the orders; WHERE keeps those from 2013 onwards; GROUP BY makes one group per customer; HAVING keeps customers above 50,000; SELECT calculates the columns; ORDER BY sorts by revenue; TOP keeps 3. Customer 29641 leads with 606,820.</p><p class="pin"><span aria-hidden="true">📍</span> Run order: FROM, WHERE, GROUP BY, HAVING, SELECT, ORDER BY, TOP.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>9. Revenue per category. Join first, group after, check one by hand.</h3></div>
+        <pre><code class="language-sql">SELECT c.Name AS Category, SUM(d.LineTotal) AS Revenue
+FROM Sales.SalesOrderDetail d
+JOIN Production.Product p ON d.ProductID = p.ProductID
+JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID
+GROUP BY c.Name ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The joins attach a category name to every order line, then GROUP BY adds up LineTotal per category. Bikes bring in 94.65 million, far ahead of Components, Clothing and Accessories.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>9. Revenue per category. Join first, group after, check one by hand. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Check one by hand: Accessories (category 4) without GROUP BY
+SELECT SUM(d.LineTotal) AS AccessoriesRevenue
+FROM Sales.SalesOrderDetail d
+WHERE d.ProductID IN (SELECT p.ProductID FROM Production.Product p
+                      JOIN Production.ProductSubcategory s
+                        ON p.ProductSubcategoryID = s.ProductSubcategoryID
+                      WHERE s.ProductCategoryID = 4);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A different route to the same number: a subquery lists every Accessories product, and the outer query sums their order lines with no GROUP BY. It returns exactly 1,272,072.88, matching the Accessories row of the grouped query. Checking one group by hand is the quickest way to trust a report.</p><p class="pin"><span aria-hidden="true">📍</span> 1,272,072.88: exactly the Accessories row above, so the grouped query is right.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>10. Products never sold, three ways. Same count each time.</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID FROM Production.Product p
+LEFT JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID
+WHERE d.ProductID IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Way 1, the anti-join from Day 5: keep the products whose LEFT JOIN found no order line. 238 products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">238 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>10. Products never sold, three ways. Same count each time. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID FROM Production.Product p
+WHERE NOT EXISTS (SELECT 1 FROM Sales.SalesOrderDetail d WHERE d.ProductID = p.ProductID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Way 2, NOT EXISTS. For each product, the subquery looks for an order line with that ProductID; NOT EXISTS keeps the product if none is found. SELECT 1 is a convention: EXISTS only checks whether a row exists, not what it contains. This is a correlated subquery, because it refers to p from the outer query. Also 238.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">238 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>10. Products never sold, three ways. Same count each time. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID FROM Production.Product p
+WHERE p.ProductID NOT IN (SELECT ProductID FROM Sales.SalesOrderDetail);
+-- NOT IN breaks silently if the subquery ever returns a NULL. Prefer NOT EXISTS.</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Way 3, NOT IN against a list from a subquery. Also 238, but risky: if the list ever contains a NULL, 'x NOT IN (..., NULL)' can never be true, so the query silently returns no rows at all. ProductID in SalesOrderDetail cannot be NULL, so it is safe here, but NOT EXISTS is the safe habit.</p><p class="pin"><span aria-hidden="true">📍</span> All three give 238. But if the subquery ever returned a NULL, NOT IN would return 0 rows with no error.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">238 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-subqueries-and-ctes"><h2>Stretch: subqueries and CTEs</h2>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Above average price</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice FROM Production.Product
+WHERE ListPrice &gt; (SELECT AVG(ListPrice) FROM Production.Product WHERE ListPrice &gt; 0);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A scalar subquery returns one value (the average selling price, 727.26), which the outer WHERE compares against. You cannot write WHERE ListPrice &gt; AVG(ListPrice) directly (error 147 again); the subquery calculates the average first. 112 products are above it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">112 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Derived table</h3></div>
+        <pre><code class="language-sql">SELECT * FROM (
+    SELECT CustomerID, COUNT(*) AS Orders FROM Sales.SalesOrderHeader GROUP BY CustomerID
+) t WHERE t.Orders &gt; 20;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A subquery in FROM is a derived table: its result is used like a temporary table, and it must have an alias (t). The inner query counts orders per customer; the outer WHERE can then filter on that count like an ordinary column. 14 customers have more than 20 orders.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">14 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Same as a CTE. This is how your team writes it.</h3></div>
+        <pre><code class="language-sql">WITH CustomerOrders AS (
+    SELECT CustomerID, COUNT(*) AS Orders FROM Sales.SalesOrderHeader GROUP BY CustomerID
+)
+SELECT * FROM CustomerOrders WHERE Orders &gt; 20 ORDER BY Orders DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A CTE (common table expression) moves the subquery to the top and gives it a name with WITH name AS (...). The main query then reads from it like a table. Same 14 customers. CTEs read top to bottom, can be referenced more than once, and are the usual style in team code.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">14 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Most expensive product per subcategory: correlated subquery</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, p.ProductSubcategoryID, p.ListPrice
+FROM Production.Product p
+WHERE p.ListPrice = (SELECT MAX(ListPrice) FROM Production.Product x
+                     WHERE x.ProductSubcategoryID = p.ProductSubcategoryID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>For each product, the correlated subquery finds the highest price in that product's subcategory, and the product is kept if it matches. The result has 94 rows for 37 subcategories because of ties: three Sport-100 helmets share the top helmet price, for example. Products with a NULL subcategory never match, since x.ProductSubcategoryID = NULL is never true.</p><p class="pin"><span aria-hidden="true">📍</span> 94 rows, not 37: every product that ties for the top price is kept, and NULL-subcategory products are skipped.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">94 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Most expensive product per subcategory: window function preview</h3></div>
+        <pre><code class="language-sql">WITH Ranked AS (
+    SELECT Name, ProductSubcategoryID, ListPrice,
+           ROW_NUMBER() OVER (PARTITION BY ProductSubcategoryID ORDER BY ListPrice DESC) AS rn
+    FROM Production.Product
+)
+SELECT * FROM Ranked WHERE rn = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROW_NUMBER() numbers the rows 1, 2, 3... within each partition (subcategory), most expensive first. Unlike GROUP BY, a window function keeps every row and adds a column. Keeping rn = 1 gives exactly one product per subcategory: 38 rows, including one for the NULL group. With ties, one product is picked arbitrarily; window functions are covered properly later.</p><p class="pin"><span aria-hidden="true">📍</span> Exactly one row per subcategory (38 including the NULL group). Ties are broken arbitrarily.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch-case-and-pivots"><h2>Stretch: CASE and pivots</h2>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Label then group by the label</h3></div>
+        <pre><code class="language-sql">SELECT CASE WHEN ListPrice &lt; 100 THEN 'Budget' WHEN ListPrice &lt; 1000 THEN 'Mid'
+            ELSE 'Premium' END AS Band,
+       COUNT(*) AS Products
+FROM Production.Product WHERE ListPrice &gt; 0
+GROUP BY CASE WHEN ListPrice &lt; 100 THEN 'Budget' WHEN ListPrice &lt; 1000 THEN 'Mid'
+              ELSE 'Premium' END;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CASE creates a label for each product and the rows are grouped by that label: 90 Budget, 128 Mid, 86 Premium. The whole CASE has to be repeated in GROUP BY, because GROUP BY runs before SELECT and cannot see the alias Band. Wrapping the CASE in a CTE avoids the repetition.</p><p class="pin"><span aria-hidden="true">📍</span> GROUP BY Band would fail: GROUP BY runs before SELECT, so the alias does not exist yet.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Manual pivot. The most useful reporting pattern this week.</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory,
+       SUM(CASE WHEN YEAR(h.OrderDate) = 2012 THEN h.TotalDue ELSE 0 END) AS Rev2012,
+       SUM(CASE WHEN YEAR(h.OrderDate) = 2013 THEN h.TotalDue ELSE 0 END) AS Rev2013,
+       SUM(CASE WHEN YEAR(h.OrderDate) = 2014 THEN h.TotalDue ELSE 0 END) AS Rev2014
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+GROUP BY t.Name ORDER BY t.Name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Conditional aggregation from Day 4, now per group. Each CASE passes TotalDue through only for one year (0 otherwise), so each SUM becomes one column. The result is a pivot table: territories down the side, years across the top. 2014 is lower everywhere because the data stops at the end of June 2014.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>ROLLUP gives subtotals and a grand total</h3></div>
+        <pre><code class="language-sql">SELECT t.CountryRegionCode, t.Name, SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+GROUP BY ROLLUP(t.CountryRegionCode, t.Name);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROLLUP adds extra summary rows to a normal GROUP BY: a subtotal for each country (shown with Name as NULL) and a grand total at the end (both columns NULL, 123.2 million). 10 territory rows + 6 country subtotals + 1 grand total = 17 rows. For single-territory countries the subtotal equals the territory row.</p><p class="pin"><span aria-hidden="true">📍</span> 17 rows: 10 territories + 6 country subtotals (Name is NULL) + 1 grand total (both NULL).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">17 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>Q1. Average order value per territory name, online orders only</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory, AVG(h.TotalDue) AS AvgOrderValue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+WHERE h.OnlineOrderFlag = 1
+GROUP BY t.Name
+ORDER BY AvgOrderValue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE keeps the online orders before grouping, then AVG works per territory name. Australian online customers spend the most per order (1,490.38); Central the least (368.44).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>Q2. Subcategories with more than 20 products</h3></div>
+        <pre><code class="language-sql">SELECT s.Name AS Subcategory, COUNT(*) AS Products
+FROM Production.Product p
+JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+GROUP BY s.Name
+HAVING COUNT(*) &gt; 20
+ORDER BY Products DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Join for the subcategory name, group by it, and use HAVING to keep the groups with more than 20 products: 5 subcategories, led by Road Bikes with 43.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>Q3. The customer with the highest total revenue, with their name</h3></div>
+        <pre><code class="language-sql">SELECT TOP 1 h.CustomerID, st.Name AS Store,
+       pp.FirstName + ' ' + pp.LastName AS ContactPerson,
+       SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+LEFT JOIN Sales.Store st ON c.StoreID = st.BusinessEntityID
+LEFT JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID
+GROUP BY h.CustomerID, st.Name, pp.FirstName, pp.LastName
+ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Group the orders by customer, sum the revenue, and keep the top 1. The name columns must also be in GROUP BY (or inside an aggregate), otherwise you get error 8120 from Day 4. Customer 29818 turns out to be a store, Brakes and Gears, whose contact person is Roger Harui. Both are LEFT JOINs, so the query would also work for an individual customer with no store.</p><p class="pin"><span aria-hidden="true">📍</span> The top customer is a store, Brakes and Gears (contact: Roger Harui), with 989,184.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>Q4. Months in 2013 where revenue fell below 2 million</h3></div>
+        <pre><code class="language-sql">SELECT MONTH(OrderDate) AS Mth, DATENAME(month, MIN(OrderDate)) AS MonthName,
+       SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+WHERE OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01'
+GROUP BY MONTH(OrderDate)
+HAVING SUM(TotalDue) &lt; 2000000
+ORDER BY Mth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE limits to 2013, GROUP BY makes one group per month, and HAVING keeps months under 2 million. The result is empty, which is a valid answer. DATENAME(month, MIN(OrderDate)) is used for the month name because a plain OrderDate is not allowed next to GROUP BY MONTH(OrderDate).</p><p class="pin"><span aria-hidden="true">📍</span> 0 rows is the correct answer: no month in 2013 fell below 2 million.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>Q4. Months in 2013 where revenue fell below 2 million <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Proof: every month of 2013, lowest first
+SELECT MONTH(OrderDate) AS Mth, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+WHERE OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01'
+GROUP BY MONTH(OrderDate)
+ORDER BY Revenue;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>When a query returns nothing, prove it by removing the HAVING. The lowest month of 2013 is January at 2.34 million, still above 2 million, so the empty result above is right.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q29">
+        <div class="q-head"><span class="num">#29</span><h3>Q5. Each product's total quantity sold, including never-sold products</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID, p.Name, ISNULL(SUM(d.OrderQty), 0) AS QtySold
+FROM Production.Product p
+LEFT JOIN Sales.SalesOrderDetail d ON p.ProductID = d.ProductID
+GROUP BY p.ProductID, p.Name
+ORDER BY QtySold DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LEFT JOIN keeps all 504 products. For the 238 never sold, SUM(d.OrderQty) is NULL, and ISNULL turns it into 0. Grouping by ProductID as well as Name keeps two products with the same name separate. The AWC Logo Cap is the best seller with 8,311 units.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_29.png" aria-label="Enlarge screenshot of query 29"><img src="shots/q_29.png" loading="lazy" alt="SSMS screenshot: query 29 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows</span></figcaption>
+        </figure>
+      </article></section>
+  
+  <nav class="pager"><a href="../day5/">← Day 5: Joins</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
