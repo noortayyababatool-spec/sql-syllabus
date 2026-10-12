@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 7: Mock assessment · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/" aria-current="page">Day 7</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 1 · SQL Basics</a> / Day 7</p>
+  <h1>Day 7: Mock assessment</h1>
+  <p class="meta">Wed 7 October 2026 · 22 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> answer 20 assessment questions in 60 minutes, notes closed, SSMS only. Pass mark 16 of 20; a query that runs but returns wrong rows is wrong.</p>
+    <p><strong>Result:</strong> 20 of 20 answered and checked against the database. Two answer-key queries (Q15 and Q17) run but return wrong rows; both are shown next to a corrected version.</p>
+  </div>
+  
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#mock-assessment">Mock assessment</a> <span>22</span></li></ol></div>
+  <section class="part" id="mock-assessment"><h2>Mock assessment</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Q1. All people with PersonType 'SC', last name first, A to Z</h3></div>
+        <pre><code class="language-sql">SELECT LastName, FirstName
+FROM Person.Person
+WHERE PersonType = 'SC'
+ORDER BY LastName, FirstName;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>'SC' means store contact: the person a store customer deals with. Listing LastName before FirstName in the SELECT puts last name first in the output, and ORDER BY LastName, FirstName sorts A to Z with first name as the tie-breaker. 753 people.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">753 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>Q2. Distinct product colours, alphabetical, NULL excluded</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT Color
+FROM Production.Product
+WHERE Color IS NOT NULL
+ORDER BY Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DISTINCT would normally return 10 rows including NULL (Day 1). WHERE Color IS NOT NULL removes the NULL before DISTINCT runs, leaving 9 colours, sorted alphabetically.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">9 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>Q3. Products priced 500 to 2000 whose name does not start with 'M'</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice
+FROM Production.Product
+WHERE ListPrice BETWEEN 500 AND 2000
+  AND Name NOT LIKE 'M%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>BETWEEN is inclusive (Day 2), so 500 and 2000 are included. NOT LIKE 'M%' removes every name starting with M (Mountain bikes, ML frames). 73 products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">73 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>Q4. People with no middle name and no suffix</h3></div>
+        <pre><code class="language-sql">SELECT FirstName, MiddleName, LastName, Suffix
+FROM Person.Person
+WHERE MiddleName IS NULL AND Suffix IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Both missing values are NULL, so IS NULL is the only correct test; MiddleName = NULL would return nothing. AND requires both to be missing. 8,496 people.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8,496 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>Q5. The 5 most recent orders with customer first and last name</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 h.SalesOrderID, h.OrderDate, pp.FirstName, pp.LastName
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+LEFT JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID
+ORDER BY h.OrderDate DESC, h.SalesOrderID DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Order -&gt; customer -&gt; person, the path from the table map. LEFT JOIN to Person keeps an order even if its customer had no person. 40 orders were placed on the final date, 30 June 2014, so ORDER BY OrderDate alone would pick 5 of them at random; the second sort key makes the answer repeatable.</p><p class="pin"><span aria-hidden="true">📍</span> Many orders share the last date (30 June 2014), so SalesOrderID DESC is added to make the top 5 predictable.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>Q6. Page 3 of products, 20 per page, by ProductID</h3></div>
+        <pre><code class="language-sql">SELECT ProductID, Name
+FROM Production.Product
+ORDER BY ProductID
+OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Page n with page size s skips (n - 1) x s rows (Day 3). Page 3 of 20 skips 40 and fetches the next 20.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>Q7. The username part of every email address (before the @)</h3></div>
+        <pre><code class="language-sql">SELECT EmailAddress,
+       LEFT(EmailAddress, CHARINDEX('@', EmailAddress) - 1) AS Username
+FROM Person.EmailAddress;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CHARINDEX finds the position of the @; LEFT keeps everything before it, and -1 drops the @ itself. One row per address: 19,972.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,972 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>Q8. Days between order date and ship date for every order, longest first</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, ShipDate,
+       DATEDIFF(day, OrderDate, ShipDate) AS DaysToShip
+FROM Sales.SalesOrderHeader
+ORDER BY DaysToShip DESC, SalesOrderID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DATEDIFF(day, start, end) counts the days. ORDER BY can use the alias because it runs after SELECT. Orders ship in 7 or 8 days, so the 8-day orders come first; SalesOrderID breaks the ties.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>Q9. Total revenue for online orders</h3></div>
+        <pre><code class="language-sql">SELECT SUM(TotalDue) AS OnlineRevenue
+FROM Sales.SalesOrderHeader
+WHERE OnlineOrderFlag = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE keeps the 27,659 online orders, then SUM adds their TotalDue: about 32.44 million, roughly a quarter of the 123.2 million total. Online orders are many but small; store orders are few but large.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>Q10. Average list price per product colour, rounded to 2 decimals, priced products only</h3></div>
+        <pre><code class="language-sql">SELECT Color, CAST(ROUND(AVG(ListPrice), 2) AS DECIMAL(10,2)) AS AvgPrice
+FROM Production.Product
+WHERE ListPrice &gt; 0
+GROUP BY Color
+ORDER BY Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE ListPrice &gt; 0 removes the components first ('priced products only'). GROUP BY makes one row per colour. ROUND rounds to 2 decimals and the CAST makes it display with exactly 2 decimals.</p><p class="pin"><span aria-hidden="true">📍</span> NULL colours form their own group. The question did not say to exclude them, so they stay.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>Q11. One row: count of orders in 2012, 2013 and 2014 as three columns</h3></div>
+        <pre><code class="language-sql">SELECT SUM(CASE WHEN YEAR(OrderDate) = 2012 THEN 1 ELSE 0 END) AS Orders2012,
+       SUM(CASE WHEN YEAR(OrderDate) = 2013 THEN 1 ELSE 0 END) AS Orders2013,
+       SUM(CASE WHEN YEAR(OrderDate) = 2014 THEN 1 ELSE 0 END) AS Orders2014
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Conditional aggregation (Day 4): each CASE gives a 1 for orders in its year and SUM counts them, so three counts sit side by side in one row: 3,915, 14,182 and 11,761. 2014 only covers January to June.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>Q12. Customers who have never placed an order</h3></div>
+        <pre><code class="language-sql">SELECT c.CustomerID, c.PersonID, c.StoreID
+FROM Sales.Customer c
+WHERE NOT EXISTS (SELECT 1 FROM Sales.SalesOrderHeader h
+                  WHERE h.CustomerID = c.CustomerID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NOT EXISTS keeps a customer when no order with its CustomerID exists (Day 6). 701 customers. Showing PersonID and StoreID explains a Day 5 puzzle: all 701 are stores with no person attached, and none of them ever ordered, which is why the INNER JOIN to Person lost no orders.</p><p class="pin"><span aria-hidden="true">📍</span> 701 customers, and every one has a NULL PersonID. These are the same 701 that made the Day 5 INNER and LEFT counts match.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">701 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>Q13. Products never sold</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID, p.Name
+FROM Production.Product p
+WHERE NOT EXISTS (SELECT 1 FROM Sales.SalesOrderDetail d
+                  WHERE d.ProductID = p.ProductID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same NOT EXISTS pattern against order lines. 238 products, matching all three methods from Day 6.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">238 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>Q14. Every line of order 43659: product name, quantity, unit price, line total</h3></div>
+        <pre><code class="language-sql">SELECT p.Name AS Product, d.OrderQty, d.UnitPrice, d.LineTotal
+FROM Sales.SalesOrderDetail d
+JOIN Production.Product p ON d.ProductID = p.ProductID
+WHERE d.SalesOrderID = 43659;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Filter the lines to one order and join Product for the names. 12 lines.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>Q15. Every employee with their manager's name, CEO included</h3></div>
+        <pre><code class="language-sql">-- Answer key version
+SELECT pe.FirstName + ' ' + pe.LastName AS Employee, pm.FirstName + ' ' + pm.LastName AS Manager
+FROM HumanResources.Employee e
+JOIN Person.Person pe ON e.BusinessEntityID = pe.BusinessEntityID
+LEFT JOIN HumanResources.Employee m ON e.OrganizationNode.GetAncestor(1) = m.OrganizationNode
+LEFT JOIN Person.Person pm ON m.BusinessEntityID = pm.BusinessEntityID
+WHERE pm.BusinessEntityID IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This is the answer key's query with one line added, WHERE pm.BusinessEntityID IS NULL, to list the employees it gives no manager. It returns 7: the CEO plus his 6 direct reports. In AdventureWorks2022 the CEO's OrganizationNode is NULL, so GetAncestor(1) of a vice president ('/') never matches him. The answer key runs and returns 290 rows, but 6 of them are wrong, which by the test's own rule makes it wrong.</p><p class="pin"><span aria-hidden="true">📍</span> Check of the answer key: the WHERE shows who it leaves without a manager. 7 people, not just the CEO.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">7 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Q15. Every employee with their manager's name, CEO included <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fixed: level-1 employees report to the CEO, whose OrganizationNode is NULL
+SELECT pe.FirstName + ' ' + pe.LastName AS Employee, e.JobTitle,
+       pm.FirstName + ' ' + pm.LastName AS Manager
+FROM HumanResources.Employee e
+JOIN Person.Person pe ON e.BusinessEntityID = pe.BusinessEntityID
+LEFT JOIN HumanResources.Employee m
+       ON m.OrganizationNode = e.OrganizationNode.GetAncestor(1)
+       OR (e.OrganizationLevel = 1 AND m.OrganizationNode IS NULL)
+LEFT JOIN Person.Person pm ON m.BusinessEntityID = pm.BusinessEntityID
+ORDER BY e.OrganizationLevel, Employee;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The fix from Day 5: an OR in the ON clause matches level-1 employees to the employee whose OrganizationNode is NULL, the CEO. Every one of the 290 employees appears (CEO included, thanks to the LEFT JOIN), and the vice presidents now show Ken Sánchez.</p><p class="pin"><span aria-hidden="true">📍</span> My answer: 290 employees, and only Ken Sánchez (the CEO) has no manager.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">290 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Q16. Territories with more than 4000 orders</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory, COUNT(*) AS Orders
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+GROUP BY t.Name
+HAVING COUNT(*) &gt; 4000
+ORDER BY Orders DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Group orders by territory name and filter the groups with HAVING (WHERE cannot use COUNT). 4 territories: Australia, Southwest, Northwest and Canada.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Q17. Customers whose total revenue exceeds 500000, highest first, with names</h3></div>
+        <pre><code class="language-sql">-- Answer key version: individual people only
+SELECT TOP 20 pp.FirstName, pp.LastName, SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID
+GROUP BY pp.FirstName, pp.LastName
+HAVING SUM(h.TotalDue) &gt; 500000
+ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The answer key's note expects almost nothing, because it assumes store customers have no PersonID. In this database the store customers that ordered do have one, their contact person, so the query returns rows (capped at 20 by TOP). There is a second problem: it groups by first and last name, not by customer. Roger Harui shows 989,400.98, but his store's actual revenue is 989,184.08, because a second, unrelated Roger Harui (individual customer 11509) was merged in.</p><p class="pin"><span aria-hidden="true">📍</span> The key predicts very few or zero rows. It returns 20, and grouping by name merges different people who share a name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Q17. Customers whose total revenue exceeds 500000, highest first, with names <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Better: group by customer and show the store name too
+SELECT h.CustomerID, st.Name AS Store,
+       pp.FirstName + ' ' + pp.LastName AS ContactPerson,
+       SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.Customer c ON h.CustomerID = c.CustomerID
+LEFT JOIN Sales.Store st ON c.StoreID = st.BusinessEntityID
+LEFT JOIN Person.Person pp ON c.PersonID = pp.BusinessEntityID
+GROUP BY h.CustomerID, st.Name, pp.FirstName, pp.LastName
+HAVING SUM(h.TotalDue) &gt; 500000
+ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Grouping by CustomerID gives one row per real customer, so totals cannot be merged by accident. LEFT JOINs to Store and Person bring in both names and keep the query correct for individual customers too. 40 customers exceed 500,000, all of them stores; Brakes and Gears leads with 989,184.08.</p><p class="pin"><span aria-hidden="true">📍</span> My answer: 40 customers, all stores, each with its own total. Always group by the key (CustomerID), not by a name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">40 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Q18. Revenue by month for 2013, formatted yyyy-MM</h3></div>
+        <pre><code class="language-sql">SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+WHERE OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01'
+GROUP BY FORMAT(OrderDate, 'yyyy-MM')
+ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHERE limits the rows to 2013 with the safe date range from Day 2, then FORMAT builds a 'yyyy-MM' label and the rows are grouped by it. 12 months; the label sorts correctly as text because the year comes first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Q19. Products priced above the average of their subcategory</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, p.ListPrice, p.ProductSubcategoryID
+FROM Production.Product p
+WHERE p.ListPrice &gt; (SELECT AVG(x.ListPrice) FROM Production.Product x
+                     WHERE x.ProductSubcategoryID = p.ProductSubcategoryID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A correlated subquery: for each product, the inner query averages the prices in that product's subcategory, and the product is kept if it is more expensive. 116 products. The 209 products with no subcategory never match, which is the right behaviour here, since they have no subcategory to compare against.</p><p class="pin"><span aria-hidden="true">📍</span> Products with no subcategory are left out, because x.ProductSubcategoryID = NULL is never true.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">116 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Q20. For each category: product count, cheapest, dearest, and 'Wide' or 'Narrow' price range</h3></div>
+        <pre><code class="language-sql">SELECT c.Name AS Category, COUNT(*) AS Products,
+       MIN(p.ListPrice) AS Cheapest, MAX(p.ListPrice) AS Dearest,
+       CASE WHEN MAX(p.ListPrice) - MIN(p.ListPrice) &gt; 2000 THEN 'Wide' ELSE 'Narrow' END AS PriceRange
+FROM Production.Product p
+JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID
+WHERE p.ListPrice &gt; 0
+GROUP BY c.Name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Join product to category, group by category, and calculate several aggregates at once. CASE can work on aggregates: if dearest minus cheapest is over 2000 the range is 'Wide'. Only Bikes (539.99 to 3,578.27) is Wide.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Table map</h2><p>How the AdventureWorks tables used this week connect. Every join follows one of these lines.</p><div class="tablewrap"><table class="map"><thead><tr><th>From</th><th>Column</th><th>To</th><th>Column</th><th>Note</th></tr></thead><tbody><tr><td>Sales.SalesOrderDetail</td><td>SalesOrderID</td><td>Sales.SalesOrderHeader</td><td>SalesOrderID</td><td>Many lines per order</td></tr><tr><td>Sales.SalesOrderDetail</td><td>ProductID</td><td>Production.Product</td><td>ProductID</td><td></td></tr><tr><td>Sales.SalesOrderHeader</td><td>CustomerID</td><td>Sales.Customer</td><td>CustomerID</td><td></td></tr><tr><td>Sales.SalesOrderHeader</td><td>TerritoryID</td><td>Sales.SalesTerritory</td><td>TerritoryID</td><td></td></tr><tr><td>Sales.SalesOrderHeader</td><td>SalesPersonID</td><td>Person.Person</td><td>BusinessEntityID</td><td>NULL for online orders</td></tr><tr><td>Sales.Customer</td><td>PersonID</td><td>Person.Person</td><td>BusinessEntityID</td><td>NULL for 701 store customers, none of which ever ordered</td></tr><tr><td>Sales.Customer</td><td>StoreID</td><td>Sales.Store</td><td>BusinessEntityID</td><td>NULL for individual customers</td></tr><tr><td>Production.Product</td><td>ProductSubcategoryID</td><td>Production.ProductSubcategory</td><td>ProductSubcategoryID</td><td>NULL for components</td></tr><tr><td>Production.ProductSubcategory</td><td>ProductCategoryID</td><td>Production.ProductCategory</td><td>ProductCategoryID</td><td></td></tr><tr><td>HumanResources.Employee</td><td>BusinessEntityID</td><td>Person.Person</td><td>BusinessEntityID</td><td>Every employee is a person</td></tr><tr><td>Person.EmailAddress</td><td>BusinessEntityID</td><td>Person.Person</td><td>BusinessEntityID</td><td></td></tr></tbody></table></div><div class="tip"><strong>Status codes in SalesOrderHeader:</strong> 1 In process, 2 Approved, 3 Backordered, 4 Rejected, 5 Shipped, 6 Cancelled. The sample data is almost entirely 5.</div>
+  <nav class="pager"><a href="../day6/">← Day 6: GROUP BY, HAVING, subqueries, CASE</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

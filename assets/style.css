@@ -68,3 +68,8 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 dialog img{display:block;max-width:96vw;max-height:88vh;width:auto;height:auto}
 dialog button{display:block;margin:8px auto;padding:6px 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
 @media (max-width:600px){.toc ol{columns:1}.q{padding:14px}.wrap{padding-inline:16px}}
+.tablewrap{overflow-x:auto;margin:12px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.map{border-collapse:collapse;width:100%;font-size:.88rem}
+.map th,.map td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.map th{background:var(--accent-soft);color:var(--ink)}
+.map td:last-child{white-space:normal;color:var(--muted)}
