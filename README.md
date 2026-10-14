@@ -16,6 +16,12 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 | [6](day6/) | GROUP BY, HAVING, subqueries, CASE | Grouping and HAVING, the logical query order, EXISTS / NOT EXISTS / NOT IN, derived tables and CTEs, correlated subqueries, CASE labels, manual pivots, ROLLUP | 29 |
 | [7](day7/) | Mock assessment | 20 timed questions covering the whole week, with two answer-key queries that return wrong rows and their corrected versions | 22 |
 
+## Week 2: Reporting SQL
+
+| Day | Topic | What it covers | Queries |
+|---|---|---|---|
+| [8](day8/) | Window functions | ROW_NUMBER, RANK, DENSE_RANK, top-N per group, running totals and frames, LAG/LEAD, percent of total, NTILE, FIRST_VALUE, moving averages, de-duplication, gap detection | 22 |
+
 ## Findings worth knowing about AdventureWorks2022
 
 - **The CEO's `OrganizationNode` is NULL**, so the textbook self join with `GetAncestor(1)` leaves 7 employees without a manager instead of 1. Days 5 and 7 show a fix with `OR` in the `ON` clause.

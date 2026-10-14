@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 8: Window functions · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/" aria-current="page">Day 8</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 8</p>
+  <h1>Day 8: Window functions</h1>
+  <p class="meta">Thu 8 October 2026 · 22 queries · run on AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> rank, number, total and compare rows without GROUP BY collapsing them. The single biggest jump from &quot;knows SQL&quot; to &quot;writes reports&quot;.</p>
+    <p><strong>Read:</strong> Microsoft Learn: &quot;OVER clause (Transact-SQL)&quot; and &quot;Ranking functions&quot;.</p>
+  </div>
+  <div class="tip"><strong>The shape to memorise:</strong> <code>FUNCTION() OVER (PARTITION BY group ORDER BY sort)</code>. PARTITION BY is like GROUP BY but keeps every row. ORDER BY inside OVER decides the sequence for running calculations.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>12</span></li><li><a href="#stretch">Stretch</a> <span>5</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Number every product by price</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice, ROW_NUMBER() OVER (ORDER BY ListPrice DESC) AS Rn
+FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A window function calculates a value for every row while looking at other rows, and unlike GROUP BY it keeps every row. ROW_NUMBER() gives 1, 2, 3... in the order set by ORDER BY inside OVER (most expensive first). All 304 priced products come back, each with its number. The five Road-150 bikes share the top price, so which one gets 1 is arbitrary.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">304 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Restart numbering per colour</h3></div>
+        <pre><code class="language-sql">SELECT Name, Color, ListPrice,
+       ROW_NUMBER() OVER (PARTITION BY Color ORDER BY ListPrice DESC) AS RnInColour
+FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>PARTITION BY Color splits the rows into one window per colour, and ROW_NUMBER restarts at 1 in each. Still 304 rows. NULL colours form their own partition and come first, which is why the screenshot starts with products that have no colour.</p><p class="pin"><span aria-hidden="true">📍</span> PARTITION BY is like GROUP BY that keeps every row: the numbering starts again at 1 for each colour.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">304 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. The three ranking functions side by side. Note how ties behave.</h3></div>
+        <pre><code class="language-sql">SELECT Name, ListPrice,
+       ROW_NUMBER() OVER (ORDER BY ListPrice DESC) AS RowNum,
+       RANK()       OVER (ORDER BY ListPrice DESC) AS Rnk,
+       DENSE_RANK() OVER (ORDER BY ListPrice DESC) AS DenseRnk
+FROM Production.Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROW_NUMBER never repeats: ties get different numbers. RANK gives ties the same number and then skips (1, 1, 1, 1, 1, 6), like sports rankings. DENSE_RANK gives ties the same number without skipping (1, 1, 1, 1, 1, 2). The five Road-150 bikes at 3,578.27 all rank 1; the next product, at 3,399.99, is RANK 6 but DENSE_RANK 2. Use DENSE_RANK for 'the second-highest price', RANK for 'positions in a league table'.</p><p class="pin"><span aria-hidden="true">📍</span> Five bikes tie at the top. The sixth product gets ROW_NUMBER 6, RANK 6 (skips 2-5) and DENSE_RANK 2 (no gaps).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">304 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Top 3 products per subcategory. The pattern you'll write weekly.</h3></div>
+        <pre><code class="language-sql">WITH Ranked AS (
+    SELECT p.Name, s.Name AS Subcategory, p.ListPrice,
+           ROW_NUMBER() OVER (PARTITION BY s.Name ORDER BY p.ListPrice DESC) AS rn
+    FROM Production.Product p
+    JOIN Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+)
+SELECT * FROM Ranked WHERE rn &lt;= 3 ORDER BY Subcategory, rn;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The top-N-per-group pattern: number the rows within each group in a CTE, then keep rn &lt;= 3 outside it. The filter has to be outside because a window function cannot be used in WHERE (see the stretch error below). 90 rows: up to 3 per subcategory, fewer where a subcategory has fewer products (Bike Racks has only 1).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">90 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Running total of revenue by month</h3></div>
+        <pre><code class="language-sql">WITH Monthly AS (
+    SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM Sales.SalesOrderHeader GROUP BY FORMAT(OrderDate, 'yyyy-MM')
+)
+SELECT YearMonth, Revenue, SUM(Revenue) OVER (ORDER BY YearMonth) AS RunningTotal
+FROM Monthly ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This is the query exactly as written in the plan, and it fails. SUM() OVER (ORDER BY ...) without a frame uses the default frame RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW. A RANGE frame can only sort by values up to 900 bytes, and FORMAT() returns nvarchar(4000), which counts as 8,000 bytes. Two fixes follow.</p><p class="pin"><span aria-hidden="true">📍</span> The plan's query fails with error 8729. FORMAT returns nvarchar(4000), too wide for the default RANGE frame.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): ORDER BY list of RANGE window frame has total size of 8000 bytes. Largest size supported is 900 bytes.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>5. Running total of revenue by month <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fix 1: say ROWS explicitly
+WITH Monthly AS (
+    SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM Sales.SalesOrderHeader GROUP BY FORMAT(OrderDate, 'yyyy-MM')
+)
+SELECT YearMonth, Revenue,
+       SUM(Revenue) OVER (ORDER BY YearMonth ROWS UNBOUNDED PRECEDING) AS RunningTotal
+FROM Monthly ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROWS UNBOUNDED PRECEDING means 'from the first row up to this one', counted by row position, which has no size limit. The running total climbs month by month and the last row equals the full 123.2 million. Writing the frame explicitly is a good habit anyway: ROWS is faster than RANGE, and RANGE treats tied ORDER BY values as one group, which gives surprising totals.</p><p class="pin"><span aria-hidden="true">📍</span> Good habit: always write ROWS UNBOUNDED PRECEDING for running totals. It is also faster than the default RANGE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>5. Running total of revenue by month <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fix 2: use a short fixed-length label instead of FORMAT
+WITH Monthly AS (
+    SELECT CONVERT(char(7), OrderDate, 120) AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM Sales.SalesOrderHeader GROUP BY CONVERT(char(7), OrderDate, 120)
+)
+SELECT YearMonth, Revenue, SUM(Revenue) OVER (ORDER BY YearMonth) AS RunningTotal
+FROM Monthly ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CONVERT(char(7), date, 120) takes the first 7 characters of the 'yyyy-mm-dd hh:mi:ss' format, giving '2013-07' as a 7-byte value. That fits inside the 900-byte limit, so the default frame works. It is also much faster than FORMAT on large tables.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>6. Each month compared to the previous month</h3></div>
+        <pre><code class="language-sql">WITH Monthly AS (
+    SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM Sales.SalesOrderHeader GROUP BY FORMAT(OrderDate, 'yyyy-MM')
+)
+SELECT YearMonth, Revenue,
+       LAG(Revenue) OVER (ORDER BY YearMonth) AS PrevMonth,
+       Revenue - LAG(Revenue) OVER (ORDER BY YearMonth) AS Change,
+       LEAD(Revenue) OVER (ORDER BY YearMonth) AS NextMonth
+FROM Monthly ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LAG reads a value from the previous row, LEAD from the next row, in the ORDER BY sequence. Revenue - LAG(Revenue) is the month-on-month change. The first month has no previous row, so PrevMonth and Change are NULL; the last month has NULL NextMonth. LAG and LEAD do not use a frame, so FORMAT works here without the error from drill 5.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>7. Aggregate beside the row, no GROUP BY</h3></div>
+        <pre><code class="language-sql">SELECT p.Name, p.ProductSubcategoryID, p.ListPrice,
+       AVG(p.ListPrice) OVER (PARTITION BY p.ProductSubcategoryID) AS SubcatAvg,
+       p.ListPrice - AVG(p.ListPrice) OVER (PARTITION BY p.ProductSubcategoryID) AS DiffFromAvg
+FROM Production.Product p WHERE p.ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Any aggregate becomes a window function when you add OVER. AVG() OVER (PARTITION BY subcategory) puts the subcategory average on every product row, so each product can be compared with its own group in one query. With GROUP BY you would need a join or subquery to get the same result (Day 7, Q19).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">304 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>8. Percent of total</h3></div>
+        <pre><code class="language-sql">SELECT t.Name AS Territory, SUM(h.TotalDue) AS Revenue,
+       SUM(h.TotalDue) * 100.0 / SUM(SUM(h.TotalDue)) OVER () AS PctOfTotal
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+GROUP BY t.Name ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Window functions run after GROUP BY, so they can work on the grouped results. The inner SUM(h.TotalDue) is each territory's revenue; SUM(...) OVER () with empty brackets adds them across every row, giving the grand total. Dividing gives each territory's share: Southwest has 22.0%. Multiplying by 100.0 (not 100) keeps the decimals.</p><p class="pin"><span aria-hidden="true">📍</span> SUM(SUM(x)) OVER (): the inner SUM is per territory, the outer SUM adds those up across all rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>9. NTILE. Split customers into 4 revenue quartiles.</h3></div>
+        <pre><code class="language-sql">SELECT CustomerID, SUM(TotalDue) AS Revenue,
+       NTILE(4) OVER (ORDER BY SUM(TotalDue) DESC) AS Quartile
+FROM Sales.SalesOrderHeader GROUP BY CustomerID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NTILE(4) sorts the rows and deals them into 4 groups of (almost) equal size: 1 is the top quarter of customers by revenue, 4 the bottom. 19,119 customers, so each quartile holds about 4,780.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,119 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>10. FIRST_VALUE. Each order with the customer's first order date.</h3></div>
+        <pre><code class="language-sql">SELECT CustomerID, SalesOrderID, OrderDate,
+       FIRST_VALUE(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS FirstOrder,
+       DATEDIFF(day, FIRST_VALUE(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate),
+                OrderDate) AS DaysSinceFirst
+FROM Sales.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FIRST_VALUE returns the first value in each customer's window, here their first order date, on every one of their orders. DATEDIFF then shows how long after their first order each later order came: customer 11000 ordered again 730 days later. LAST_VALUE is the trap: with the default frame the window ends at the current row, so it returns the current row's value unless you extend the frame to UNBOUNDED FOLLOWING.</p><p class="pin"><span aria-hidden="true">📍</span> LAST_VALUE needs ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING, otherwise it just returns the current row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>Moving average, last 3 months</h3></div>
+        <pre><code class="language-sql">WITH Monthly AS (
+    SELECT FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM Sales.SalesOrderHeader GROUP BY FORMAT(OrderDate, 'yyyy-MM')
+)
+SELECT YearMonth, Revenue,
+       AVG(Revenue) OVER (ORDER BY YearMonth ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS MovingAvg3
+FROM Monthly;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ROWS BETWEEN 2 PRECEDING AND CURRENT ROW is a sliding frame of 3 rows: this month and the two before. The average smooths out spiky months. The first two months average over only 1 and 2 months, because there are no earlier rows. This works with FORMAT because it uses a ROWS frame.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>Remove duplicates with ROW_NUMBER. People sharing first and last name.</h3></div>
+        <pre><code class="language-sql">WITH Dupes AS (
+    SELECT BusinessEntityID, FirstName, LastName,
+           ROW_NUMBER() OVER (PARTITION BY FirstName, LastName ORDER BY BusinessEntityID) AS rn
+    FROM Person.Person
+)
+SELECT * FROM Dupes WHERE rn &gt; 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The standard de-duplication pattern: number the rows within each group of duplicates, keep rn = 1 as the original, and everything with rn &gt; 1 is a copy. 456 people share a first and last name with someone earlier in the table (Laura Norman appears 5 times). Changing SELECT to DELETE in the outer query is how duplicates are removed from a real table. This is also why Day 7 Q17 said to group by CustomerID, not by name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">456 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>Gaps: customers whose gap between consecutive orders exceeded 365 days</h3></div>
+        <pre><code class="language-sql">WITH Gaps AS (
+    SELECT CustomerID, OrderDate,
+           LAG(OrderDate) OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS PrevOrder
+    FROM Sales.SalesOrderHeader
+)
+SELECT CustomerID, PrevOrder, OrderDate, DATEDIFF(day, PrevOrder, OrderDate) AS GapDays
+FROM Gaps WHERE DATEDIFF(day, PrevOrder, OrderDate) &gt; 365;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LAG partitioned by customer puts each customer's previous order date beside each order; the outer query keeps gaps longer than a year. 3,486 rows, one for each of 3,486 customers. Most are 2011 customers who came back in 2013. The first order of each customer has a NULL PrevOrder, and DATEDIFF with NULL is NULL, so those rows drop out automatically.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3,486 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Window function in WHERE fails. Read the error, then wrap it in a CTE.</h3></div>
+        <pre><code class="language-sql">SELECT Name, ROW_NUMBER() OVER (ORDER BY ListPrice) AS rn
+FROM Production.Product
+WHERE ROW_NUMBER() OVER (ORDER BY ListPrice) &lt;= 5;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Error 4108: windowed functions can only appear in the SELECT or ORDER BY clauses. The logical order from Day 6 explains it: window functions are calculated at the SELECT step, after WHERE has already run, so WHERE cannot see them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Windowed functions can only appear in the SELECT or ORDER BY clauses.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Window function in WHERE fails. Read the error, then wrap it in a CTE. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">WITH Numbered AS (
+    SELECT Name, ListPrice, ROW_NUMBER() OVER (ORDER BY ListPrice) AS rn
+    FROM Production.Product
+)
+SELECT * FROM Numbered WHERE rn &lt;= 5;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The fix: calculate the row number inside a CTE, where it becomes an ordinary column, then filter it in the outer query. This is the same shape as drill 4. 5 rows: five of the 0-priced components.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Q1. The most expensive product in each colour</h3></div>
+        <pre><code class="language-sql">WITH Ranked AS (
+    SELECT Name, Color, ListPrice,
+           RANK() OVER (PARTITION BY Color ORDER BY ListPrice DESC) AS rk
+    FROM Production.Product
+    WHERE ListPrice &gt; 0 AND Color IS NOT NULL
+)
+SELECT Color, Name, ListPrice FROM Ranked WHERE rk = 1 ORDER BY Color, Name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Rank products within each colour, highest price first, and keep rank 1. RANK keeps every product that ties for first place, which is the honest answer: 30 rows for 9 colours, because the four Mountain-100 Black sizes all cost 3,374.99, for example. ROW_NUMBER would silently pick just one of them.</p><p class="pin"><span aria-hidden="true">📍</span> RANK, not ROW_NUMBER: if several products tie for the top price, all of them are the 'most expensive'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">30 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Q2. Cumulative order count per territory by month</h3></div>
+        <pre><code class="language-sql">WITH Monthly AS (
+    SELECT t.Name AS Territory, FORMAT(h.OrderDate, 'yyyy-MM') AS YearMonth, COUNT(*) AS Orders
+    FROM Sales.SalesOrderHeader h
+    JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+    GROUP BY t.Name, FORMAT(h.OrderDate, 'yyyy-MM')
+)
+SELECT Territory, YearMonth, Orders,
+       SUM(Orders) OVER (PARTITION BY Territory ORDER BY YearMonth
+                         ROWS UNBOUNDED PRECEDING) AS CumulativeOrders
+FROM Monthly ORDER BY Territory, YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>First count orders per territory per month in a CTE, then run a total that restarts for each territory (PARTITION BY Territory). ROWS UNBOUNDED PRECEDING avoids the drill 5 error. 364 territory-months; each territory's last row equals its total orders, so Australia ends at 6,843.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">364 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Q3. Each order's TotalDue compared to the same customer's previous order</h3></div>
+        <pre><code class="language-sql">SELECT CustomerID, SalesOrderID, OrderDate, TotalDue,
+       LAG(TotalDue) OVER (PARTITION BY CustomerID ORDER BY OrderDate, SalesOrderID) AS PrevTotal,
+       TotalDue - LAG(TotalDue) OVER (PARTITION BY CustomerID ORDER BY OrderDate, SalesOrderID) AS Change
+FROM Sales.SalesOrderHeader
+ORDER BY CustomerID, OrderDate, SalesOrderID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LAG partitioned by customer looks back to that customer's previous order only. SalesOrderID is added to the ORDER BY so two orders on the same day still have a fixed sequence. A customer's first order has NULL PrevTotal. Customer 11000 spent 1,169.11 less on their second order than their first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31,465 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Q4. The second-highest salesperson by revenue, using DENSE_RANK</h3></div>
+        <pre><code class="language-sql">WITH SalesByPerson AS (
+    SELECT h.SalesPersonID, pp.FirstName + ' ' + pp.LastName AS SalesPerson,
+           SUM(h.TotalDue) AS Revenue,
+           DENSE_RANK() OVER (ORDER BY SUM(h.TotalDue) DESC) AS dr
+    FROM Sales.SalesOrderHeader h
+    JOIN Person.Person pp ON h.SalesPersonID = pp.BusinessEntityID
+    GROUP BY h.SalesPersonID, pp.FirstName, pp.LastName
+)
+SELECT SalesPersonID, SalesPerson, Revenue FROM SalesByPerson WHERE dr = 2;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Group orders by salesperson, rank the totals with DENSE_RANK, and keep rank 2. The INNER JOIN to Person drops online orders, which have no salesperson. Jillian Carson is second with 11.34 million, behind Linda Mitchell's 11.70 million. DENSE_RANK means that if two people tied for first, the next person would still be rank 2.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Q5. Customers in the top 10 percent by revenue, using NTILE(10)</h3></div>
+        <pre><code class="language-sql">WITH Deciles AS (
+    SELECT CustomerID, SUM(TotalDue) AS Revenue,
+           NTILE(10) OVER (ORDER BY SUM(TotalDue) DESC) AS Decile
+    FROM Sales.SalesOrderHeader GROUP BY CustomerID
+)
+SELECT CustomerID, Revenue FROM Deciles WHERE Decile = 1 ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>NTILE(10) deals the 19,119 customers into 10 groups by revenue; group 1 is the top 10%. 1,912 customers (19,119 / 10 rounded up, because NTILE gives the extra rows to the first groups).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1,912 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>Lesson from drill 5:</strong> a running total with <code>SUM() OVER (ORDER BY …)</code> and no frame uses <code>RANGE</code> by default, which fails when sorting by a long text value such as <code>FORMAT()</code>. Always write <code>ROWS UNBOUNDED PRECEDING</code> for running totals: it avoids the error and is faster.</div>
+  <nav class="pager"><a href="../day7/">← Day 7: Mock assessment</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
