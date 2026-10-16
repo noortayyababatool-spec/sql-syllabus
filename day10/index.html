@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 10: Tables, constraints, views, temp tables · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/" aria-current="page">Day 10</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 10</p>
+  <h1>Day 10: Tables, constraints, views, temp tables</h1>
+  <p class="meta">Mon 12 October 2026 · 22 queries · run on AWPractice (a practice copy)</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> build the tables a pipeline loads into, and make them refuse bad data.</p>
+    <p><strong>Read:</strong> W3Schools SQL Create Table, SQL Constraints, SQL Primary Key, SQL Foreign Key, SQL Check, SQL Default, SQL Create View, SQL Alter Table.</p>
+  </div>
+  <div class="tip"><strong>Where this runs:</strong> in the <code>AWPractice</code> database built on Day 9, continuing from the state Day 9 left. Steps run once, in order. Three of the plan's statements fail as written (drill 4, drill 5 and CREATE OR ALTER); each is shown with its error and then fixed.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>12</span></li><li><a href="#stretch">Stretch</a> <span>6</span></li><li><a href="#self-test">Self-test</a> <span>4</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. A proper table with every constraint type</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+GO
+CREATE TABLE dbo.SalesSummary (
+    SummaryID INT IDENTITY(1,1) PRIMARY KEY,
+    TerritoryID INT NOT NULL,
+    YearMonth CHAR(7) NOT NULL,
+    OrderCount INT NOT NULL DEFAULT 0,
+    Revenue DECIMAL(18,2) NOT NULL CHECK (Revenue &gt;= 0),
+    LoadedAt DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT UQ_SalesSummary UNIQUE (TerritoryID, YearMonth)
+);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CREATE TABLE defines each column's name, data type and rules. IDENTITY(1,1) numbers rows automatically from 1; PRIMARY KEY makes SummaryID unique and never NULL. NOT NULL forbids missing values. DEFAULT fills a value when an INSERT leaves the column out (0 orders, the current time). CHECK rejects any row where the condition is false (no negative revenue). UNIQUE on two columns means each territory can have only one row per month. Together these make the table refuse bad data instead of storing it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Break each constraint on purpose. Read every error.</h3></div>
+        <pre><code class="language-sql">INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, Revenue) VALUES (1, '2013-01', -5);        -- CHECK
+INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, Revenue) VALUES (1, '2013-01', 100);
+INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, Revenue) VALUES (1, '2013-01', 200);       -- UNIQUE
+INSERT INTO dbo.SalesSummary (TerritoryID, Revenue) VALUES (1, 100);                            -- NOT NULL
+INSERT INTO dbo.SalesSummary (SummaryID, TerritoryID, YearMonth, Revenue) VALUES (99, 2, '2013-02', 1);  -- IDENTITY
+SELECT * FROM dbo.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Each INSERT breaks one rule, and each rule has its own error: 547 for the CHECK (negative revenue), 2627 for the UNIQUE key (a second row for territory 1 in 2013-01), 515 for NOT NULL (no YearMonth), and 544 for typing a value into an identity column (Day 9). Constraint errors fail only that statement, so the batch carries on and the one valid row is stored. It gets SummaryID 2, not 1: identity values are used up even by inserts that fail, so gaps in identity numbers are normal.</p><p class="pin"><span aria-hidden="true">📍</span> Four errors, four different numbers. The one good row got SummaryID 2: the failed first INSERT still used up ID 1.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: errors 547 (CHECK), 2627 (UNIQUE), 515 (NOT NULL) and 544 (IDENTITY); only the second INSERT succeeds</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Add a foreign key after the fact</h3></div>
+        <pre><code class="language-sql">ALTER TABLE Territory ADD CONSTRAINT PK_Territory PRIMARY KEY (TerritoryID);
+ALTER TABLE dbo.SalesSummary ADD CONSTRAINT FK_SalesSummary_Territory
+    FOREIGN KEY (TerritoryID) REFERENCES Territory(TerritoryID);
+INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, Revenue) VALUES (999, '2013-03', 1);      -- FK fails</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A foreign key says 'every TerritoryID here must exist in Territory'. It can only reference a column that is a primary key or unique, so Territory gets its primary key first; this works because Day 9 removed the duplicate Pakistan row (it would fail with duplicates). The INSERT for territory 999 is then rejected with error 547, the same number as a CHECK failure but naming the FOREIGN KEY.</p><p class="pin"><span aria-hidden="true">📍</span> A foreign key can only point at a primary key (or unique) column, so Territory needed its key first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: error 547, FOREIGN KEY conflict on TerritoryID 999</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. ALTER TABLE: add, change, drop a column</h3></div>
+        <pre><code class="language-sql">ALTER TABLE dbo.SalesSummary ADD AvgOrderValue DECIMAL(18,2) NULL;
+ALTER TABLE dbo.SalesSummary ALTER COLUMN YearMonth VARCHAR(10) NOT NULL;
+ALTER TABLE dbo.SalesSummary DROP COLUMN AvgOrderValue;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ADD works. ALTER COLUMN fails with error 5074 ('UQ_SalesSummary is dependent on column YearMonth') and 4922: SQL Server will not change a column's type while a constraint or index uses it. Error 4922 also aborts the rest of the batch, so the DROP COLUMN never runs and AvgOrderValue is left behind. That matters later: the computed column in the stretch has the same name.</p><p class="pin"><span aria-hidden="true">📍</span> The plan's version fails: a column used by a constraint cannot be changed. Error 4922 also stops the batch, so DROP COLUMN never runs.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: errors 5074 and 4922, YearMonth is used by UQ_SalesSummary</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>4. ALTER TABLE: add, change, drop a column <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fix: drop the constraint, change the column, put the constraint back
+ALTER TABLE dbo.SalesSummary DROP CONSTRAINT UQ_SalesSummary;
+ALTER TABLE dbo.SalesSummary ALTER COLUMN YearMonth VARCHAR(10) NOT NULL;
+ALTER TABLE dbo.SalesSummary ADD CONSTRAINT UQ_SalesSummary UNIQUE (TerritoryID, YearMonth);
+ALTER TABLE dbo.SalesSummary DROP COLUMN AvgOrderValue;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The standard order for changing a constrained column: drop the constraint, alter the column, add the constraint back. Then the leftover AvgOrderValue column is dropped, finishing what the plan's batch meant to do. On a big table, re-adding a UNIQUE constraint rebuilds its index, so this is done in a quiet period.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>5. Fill it from the source. This is the query SSIS will run on Day 13.</h3></div>
+        <pre><code class="language-sql">INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, OrderCount, Revenue)
+SELECT TerritoryID, FORMAT(OrderDate, 'yyyy-MM'), COUNT(*), SUM(TotalDue)
+FROM SalesOrderHeader GROUP BY TerritoryID, FORMAT(OrderDate, 'yyyy-MM');
+SELECT COUNT(*) AS RowsInSummary FROM dbo.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The plan's version fails. The test row from drill 2, territory 1 in 2013-01, is still in the table, and the load also produces a row for territory 1 in 2013-01, so the UNIQUE key rejects it. A single INSERT is all-or-nothing: one bad row cancels all 364. This is exactly what the UNIQUE constraint is for, because it stops a load from double-counting a month.</p><p class="pin"><span aria-hidden="true">📍</span> One leftover test row made the whole 364-row load fail. A statement is all-or-nothing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: error 2627, duplicate key (1, 2013-01); RowsInSummary is still 1</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>5. Fill it from the source. This is the query SSIS will run on Day 13. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Fix: clear the table first, so the load can be re-run safely
+DELETE FROM dbo.SalesSummary;
+INSERT INTO dbo.SalesSummary (TerritoryID, YearMonth, OrderCount, Revenue)
+SELECT TerritoryID, FORMAT(OrderDate, 'yyyy-MM'), COUNT(*), SUM(TotalDue)
+FROM SalesOrderHeader GROUP BY TerritoryID, FORMAT(OrderDate, 'yyyy-MM');
+SELECT COUNT(*) AS RowsInSummary FROM dbo.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Clearing the table first makes the load re-runnable: running it twice gives the same result instead of an error. This 'delete then insert' (or truncate then insert) is the simplest full-reload pattern for summary tables. 364 rows: one per territory per month, matching the 364 territory-months from Day 8. The CHECK, NOT NULL and FOREIGN KEY constraints all checked every one of them.</p><p class="pin"><span aria-hidden="true">📍</span> Delete-then-insert makes the load re-runnable. Day 13's SSIS package does the same.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">364 rows loaded, one per territory per month</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>6. A view. Saved query, no data of its own.</h3></div>
+        <pre><code class="language-sql">CREATE VIEW dbo.vw_ProductCatalog AS
+SELECT p.ProductID, p.Name, p.Color, p.ListPrice, s.Name AS Subcategory, c.Name AS Category
+FROM Product p
+JOIN AdventureWorks2022.Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN AdventureWorks2022.Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID
+WHERE p.ListPrice &gt; 0;
+GO
+SELECT * FROM dbo.vw_ProductCatalog WHERE Category = 'Bikes';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A view stores a query, not data. Every SELECT from the view runs the saved query against the current tables, so users can query 'products with category names' without writing the joins. CREATE VIEW must be the only statement in its batch, hence the GO. The prices are the AWPractice prices raised on Day 9, which proves the view reads live data.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">97 rows: the bikes, with their raised Day 9 prices</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>7. Change the view, drop the view</h3></div>
+        <pre><code class="language-sql">ALTER VIEW dbo.vw_ProductCatalog AS SELECT ProductID, Name, ListPrice FROM Product WHERE ListPrice &gt; 0;
+GO
+DROP VIEW dbo.vw_ProductCatalog;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ALTER VIEW replaces the saved query but keeps the view's name and permissions. DROP VIEW deletes the view only; the tables it read are untouched, because a view holds no data of its own.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>8. Temp table. Lives until the session ends.</h3></div>
+        <pre><code class="language-sql">SELECT TerritoryID, SUM(TotalDue) AS Revenue INTO #TerritoryRevenue
+FROM SalesOrderHeader GROUP BY TerritoryID;
+SELECT t.Name, r.Revenue FROM #TerritoryRevenue r JOIN Territory t ON r.TerritoryID = t.TerritoryID;
+DROP TABLE #TerritoryRevenue;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A table whose name starts with # is a local temporary table. It is stored in tempdb, only this session (this query window) can see it, and it is dropped automatically when the session ends. Temp tables are useful for breaking a big report into steps, and unlike a CTE they can be indexed and reused by several later queries. Dropping it yourself when done is good practice.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>9. Table variable. Same idea, smaller scope, no statistics.</h3></div>
+        <pre><code class="language-sql">DECLARE @Top AS TABLE (ProductID INT, Name NVARCHAR(50), ListPrice MONEY);
+INSERT INTO @Top SELECT TOP 5 ProductID, Name, ListPrice FROM Product ORDER BY ListPrice DESC;
+SELECT * FROM @Top;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A table variable (@name) lives only for the batch it is declared in; after the batch ends it is gone, so the three statements must run together. SQL Server keeps no statistics on it, so it suits small sets like this one; for thousands of rows a #temp table usually gives a better query plan.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>10. See what you built</h3></div>
+        <pre><code class="language-sql">SELECT TABLE_NAME, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES;
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+WHERE TABLE_NAME = 'SalesSummary';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INFORMATION_SCHEMA views describe the database (Day 1). The first lists every table; the second shows SalesSummary's constraints: PRIMARY KEY, UNIQUE, CHECK and FOREIGN KEY. NOT NULL and DEFAULT are not listed here because they are column properties. Names like PK__SalesSum__... were made up by SQL Server because the CREATE TABLE did not name them, which is why teams name every constraint (UQ_SalesSummary).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets: the tables in AWPractice, and SalesSummary's 4 constraints</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>Computed column</h3></div>
+        <pre><code class="language-sql">ALTER TABLE dbo.SalesSummary ADD AvgOrderValue AS
+    (CASE WHEN OrderCount = 0 THEN 0 ELSE Revenue / OrderCount END);
+GO
+SELECT TOP 3 TerritoryID, YearMonth, OrderCount, Revenue, AvgOrderValue FROM dbo.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A computed column stores a formula, not a value; it is calculated whenever it is read, so it can never be out of date. The CASE avoids dividing by zero. The GO matters: SQL Server compiles a whole batch before running it, and without it the SELECT fails with error 207 because AvgOrderValue does not exist yet at compile time. This only works because drill 4's fix dropped the old AvgOrderValue column; with the plan's version it fails with error 2705 (column name used twice).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows with AvgOrderValue calculated</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>Schema. Group your objects like AdventureWorks does.</h3></div>
+        <pre><code class="language-sql">CREATE SCHEMA reporting;
+GO
+ALTER SCHEMA reporting TRANSFER dbo.SalesSummary;
+SELECT TOP 3 SummaryID, TerritoryID, YearMonth, Revenue FROM reporting.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A schema is a named folder for objects, like Sales and Production in AdventureWorks. CREATE SCHEMA must be alone in its batch. ALTER SCHEMA ... TRANSFER moves the table, with its data and constraints, into the new schema, and from then on it must be called reporting.SalesSummary. Schemas also make permissions easy: grant a reporting team access to the whole reporting schema.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows, now read as reporting.SalesSummary</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>DROP IF EXISTS and CREATE OR ALTER: the deploy-script pattern</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS dbo.Scratch;
+CREATE OR ALTER VIEW dbo.vw_Territories AS SELECT TerritoryID, Name FROM Territory;
+GO</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The plan's version fails with error 111. CREATE OR ALTER VIEW follows the same rule as CREATE VIEW: it must be the first statement in its batch, and here DROP TABLE comes first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: error 111, CREATE VIEW must be the first statement in a query batch</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>DROP IF EXISTS and CREATE OR ALTER: the deploy-script pattern <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS dbo.Scratch;
+GO
+CREATE OR ALTER VIEW dbo.vw_Territories AS SELECT TerritoryID, Name FROM Territory;
+GO
+SELECT * FROM dbo.vw_Territories;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>With a GO between them both statements work. DROP TABLE IF EXISTS does nothing when the table is missing instead of raising an error, and CREATE OR ALTER creates the view the first time and replaces it after that. Together they make a deploy script safe to run again and again. The view shows 12 territories, including those added on Day 9.</p><p class="pin"><span aria-hidden="true">📍</span> Both statements are safe to re-run, which is what a deploy script needs.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 territories, including Pakistan and Bangladesh from Day 9</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Global temp table, visible to other sessions</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 * INTO ##Shared FROM Product;
+SELECT @@SPID AS ThisSession, COUNT(*) AS RowsInShared FROM ##Shared;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two hashes make a global temporary table: any session can read it until the session that created it closes. @@SPID is this connection's session ID, shown so the next screenshot can prove a different session reads the same table.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: session 69 created ##Shared with 10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Global temp table, visible to other sessions <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Run in a NEW query window (a different session)
+SELECT @@SPID AS OtherSession, COUNT(*) AS RowsSeen FROM ##Shared;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This runs in a second query window, which is a separate session with a different @@SPID, and it still sees the 10 rows. A #local temp table would be invisible here. Global temp tables are rarely needed, and their names can clash between users.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: session 56, a different session, still sees the 10 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Q1. Create reporting.ProductSales and fill it</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+CREATE TABLE reporting.ProductSales (
+    ProductID INT NOT NULL,
+    YearMonth CHAR(7) NOT NULL,
+    Qty INT NOT NULL CONSTRAINT CK_ProductSales_Qty CHECK (Qty &gt; 0),
+    Revenue DECIMAL(18,2) NOT NULL,
+    CONSTRAINT PK_ProductSales PRIMARY KEY (ProductID, YearMonth)
+);
+INSERT INTO reporting.ProductSales (ProductID, YearMonth, Qty, Revenue)
+SELECT d.ProductID, CONVERT(char(7), h.OrderDate, 120), SUM(d.OrderQty), SUM(d.LineTotal)
+FROM SalesOrderDetail d JOIN SalesOrderHeader h ON d.SalesOrderID = h.SalesOrderID
+GROUP BY d.ProductID, CONVERT(char(7), h.OrderDate, 120);
+SELECT COUNT(*) AS RowsLoaded FROM reporting.ProductSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A composite primary key on (ProductID, YearMonth) means one row per product per month. The named CHECK keeps Qty positive. The load joins order lines to their orders to get the month (CONVERT(char(7), ..., 120) gives 'yyyy-mm', from Day 8), then groups by product and month. Grouping by exactly the primary-key columns guarantees no duplicate keys: 3,862 rows. USE AWPractice is needed because this query window was opened fresh.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3,862 product-months loaded</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Q2. A view on it that adds the product name</h3></div>
+        <pre><code class="language-sql">CREATE VIEW reporting.vw_ProductSales AS
+SELECT ps.ProductID, p.Name AS ProductName, ps.YearMonth, ps.Qty, ps.Revenue
+FROM reporting.ProductSales ps JOIN Product p ON ps.ProductID = p.ProductID;
+GO
+SELECT TOP 5 * FROM reporting.vw_ProductSales ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The view joins in the product name so report users never have to. The best single product-month is the Mountain-200 Black, 38 in March 2014, with 336,401.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">top 5 product-months by revenue</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Q3. Add a foreign key to Product and prove it rejects a bad ProductID</h3></div>
+        <pre><code class="language-sql">ALTER TABLE Product ADD CONSTRAINT PK_Product PRIMARY KEY (ProductID);
+ALTER TABLE reporting.ProductSales ADD CONSTRAINT FK_ProductSales_Product
+    FOREIGN KEY (ProductID) REFERENCES Product(ProductID);
+INSERT INTO reporting.ProductSales (ProductID, YearMonth, Qty, Revenue) VALUES (99999, '2014-07', 1, 10);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Product gets its primary key first, as Territory did in drill 3. Adding the foreign key also checks the 3,862 existing rows, and they all pass. The INSERT for product 99999 is rejected with error 547.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: error 547, FOREIGN KEY conflict on ProductID 99999</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Q4. Drop everything in the right order: view, FK, table</h3></div>
+        <pre><code class="language-sql">DROP VIEW reporting.vw_ProductSales;
+ALTER TABLE reporting.ProductSales DROP CONSTRAINT FK_ProductSales_Product;
+DROP TABLE reporting.ProductSales;
+SELECT OBJECT_ID('reporting.ProductSales') AS TableLeft, OBJECT_ID('reporting.vw_ProductSales') AS ViewLeft;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Things that depend on a table go first: the view that reads it, then the foreign key on it, then the table itself. (Dropping a table also drops its own foreign keys; dropping one explicitly is the habit for when other tables reference it.) OBJECT_ID returns NULL for an object that does not exist, which proves both are gone.</p><p class="pin"><span aria-hidden="true">📍</span> Drop from the top of the dependency chain down: view, then foreign key, then table.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">no errors; both OBJECT_IDs are NULL, so both objects are gone</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>Not shown:</strong> the plan's manual step, right-click Product in Object Explorer &gt; Script Table as &gt; CREATE To, is a click-through in SSMS rather than a query. Doing it on <code>dbo.Product</code> now shows the PRIMARY KEY added in self-test Q3.</div><div class="tip"><strong>What batches taught today:</strong> CREATE VIEW, ALTER VIEW, CREATE OR ALTER and CREATE SCHEMA must be alone in their batch, and a new column cannot be used later in the same batch that adds it. When in doubt, put <code>GO</code> after any statement that creates or changes an object.</div>
+  <nav class="pager"><a href="../day9/">← Day 9: INSERT, UPDATE, DELETE, MERGE, transactions</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

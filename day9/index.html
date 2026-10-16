@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 </head>
-<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/" aria-current="page">Day 9</a></nav></div></header>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/" aria-current="page">Day 9</a><a href="../day10/">Day 10</a></nav></div></header>
 <main class="wrap">
   <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 9</p>
   <h1>Day 9: INSERT, UPDATE, DELETE, MERGE, transactions</h1>
@@ -354,7 +354,7 @@ SET IDENTITY_INSERT Product OFF;</code></pre>
         </figure>
       </article></section>
   <div class="tip"><strong>Habits that keep you employed:</strong> write the <code>WHERE</code> before the <code>SET</code>; run a <code>SELECT</code> with the same <code>WHERE</code> before any <code>UPDATE</code> or <code>DELETE</code>; wrap anything over 100 rows in a transaction and check the count before <code>COMMIT</code>; never run a bare <code>DELETE</code> or <code>UPDATE</code> on a production connection.</div><div class="tip"><strong>Not run:</strong> the plan's last step, <code>USE master; DROP DATABASE AWPractice;</code>, rebuilds the practice copy from scratch when it gets messy. <code>AWPractice</code> is kept for Day 10, which adds keys and constraints to it.</div>
-  <nav class="pager"><a href="../day8/">← Day 8: Window functions</a><span></span></nav>
+  <nav class="pager"><a href="../day8/">← Day 8: Window functions</a><a href="../day10/">Day 10: Tables, constraints, views, temp tables →</a></nav>
 </main>
 <footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
 <dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
