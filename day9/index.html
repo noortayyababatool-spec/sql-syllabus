@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 9: INSERT, UPDATE, DELETE, MERGE, transactions · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/" aria-current="page">Day 9</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 9</p>
+  <h1>Day 9: INSERT, UPDATE, DELETE, MERGE, transactions</h1>
+  <p class="meta">Fri 9 October 2026 · 24 queries · run on AWPractice (a practice copy)</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> change data without fear, because you always know how to undo it.</p>
+    <p><strong>Read:</strong> W3Schools SQL Insert Into, SQL Update, SQL Delete, SQL Insert Into Select. Microsoft Learn: &quot;MERGE (Transact-SQL)&quot; and &quot;Transactions&quot;.</p>
+  </div>
+  <div class="tip"><strong>Where this runs:</strong> everything below runs in a practice database, <code>AWPractice</code>, built from copies of the AdventureWorks tables, so AdventureWorks2022 itself is never changed. The steps run once, in order, top to bottom: each one depends on the state the previous one left behind.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#setup">Setup</a> <span>2</span></li><li><a href="#drill">Drill</a> <span>13</span></li><li><a href="#stretch">Stretch</a> <span>4</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="setup"><h2>Setup</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Build the practice copy</h3></div>
+        <pre><code class="language-sql">CREATE DATABASE AWPractice;
+GO
+USE AWPractice;
+GO
+SELECT * INTO Product FROM AdventureWorks2022.Production.Product;
+SELECT * INTO SalesOrderHeader FROM AdventureWorks2022.Sales.SalesOrderHeader;
+SELECT * INTO SalesOrderDetail FROM AdventureWorks2022.Sales.SalesOrderDetail;
+SELECT * INTO Territory FROM AdventureWorks2022.Sales.SalesTerritory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CREATE DATABASE makes a new, empty database so all of today's changes happen away from AdventureWorks2022. GO ends a batch: SQL Server must finish creating the database before USE can switch to it. SELECT * INTO creates each table and copies its rows in one step. The Messages tab shows the rows copied: 504 products, 31,465 orders, 121,317 order lines and 10 territories.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: 504, 31,465, 121,317 and 10 rows copied</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>Build the practice copy <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- What did SELECT INTO really copy? Check for identity columns.
+SELECT t.name AS TableName, c.name AS IdentityColumn
+FROM sys.identity_columns c
+JOIN sys.tables t ON c.object_id = t.object_id;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The plan says SELECT INTO copies no keys, indexes or constraints, which is true. But it does copy the IDENTITY property: all four tables still generate their own IDs automatically. sys.identity_columns is a system view listing every identity column. This explains the errors in drills 1 and 3 below.</p><p class="pin"><span aria-hidden="true">📍</span> SELECT INTO does copy the IDENTITY property. That breaks the plan's inserts with explicit IDs (drills 1-3, MERGE).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows: all four tables kept an identity column</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>1. Insert one row. Count before and after.</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Before FROM Territory;
+INSERT INTO Territory (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                       CostYTD, CostLastYear, rowguid, ModifiedDate)
+VALUES (11, 'Pakistan', 'PK', 'Asia', 0, 0, 0, 0, NEWID(), GETDATE());
+SELECT COUNT(*) AS After FROM Territory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The plan's version. The INSERT fails with error 544: you cannot type your own value into an identity column while IDENTITY_INSERT is OFF. The count before and after is 10 both times, so the count check did its job and proved nothing was inserted.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">error 544, the INSERT failed; Before = 10 and After = 10</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>1. Insert one row. Count before and after. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SET IDENTITY_INSERT Territory ON;
+INSERT INTO Territory (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                       CostYTD, CostLastYear, rowguid, ModifiedDate)
+VALUES (11, 'Pakistan', 'PK', 'Asia', 0, 0, 0, 0, NEWID(), GETDATE());
+SET IDENTITY_INSERT Territory OFF;
+SELECT COUNT(*) AS After FROM Territory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SET IDENTITY_INSERT Territory ON allows an explicit TerritoryID for this session, and it needs a column list, which the INSERT already has. Only one table per session can have it ON, so switch it OFF straight away. The count is now 11. [Group] has square brackets because GROUP is a reserved word.</p><p class="pin"><span aria-hidden="true">📍</span> SET IDENTITY_INSERT ON lets you supply the ID yourself. Always switch it OFF again straight after.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Territory now has 11 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>2. Insert several rows in one statement</h3></div>
+        <pre><code class="language-sql">SET IDENTITY_INSERT Territory ON;
+INSERT INTO Territory (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                       CostYTD, CostLastYear, rowguid, ModifiedDate)
+VALUES (12, 'India', 'IN', 'Asia', 0, 0, 0, 0, NEWID(), GETDATE()),
+       (13, 'UAE', 'AE', 'Middle East', 0, 0, 0, 0, NEWID(), GETDATE());
+SET IDENTITY_INSERT Territory OFF;
+SELECT TerritoryID, Name, CountryRegionCode, [Group] FROM Territory WHERE TerritoryID &gt;= 11;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One VALUES clause can hold many rows separated by commas, inserted in one statement, which is faster than separate INSERTs and all-or-nothing. The SELECT afterwards shows the three new territories.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows: Pakistan, India and UAE</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>3. INSERT from a SELECT. Copy the 2014 orders into an archive table.</h3></div>
+        <pre><code class="language-sql">SELECT * INTO SalesOrderHeader2014 FROM SalesOrderHeader WHERE 1 = 0;   -- empty copy of the structure
+INSERT INTO SalesOrderHeader2014 SELECT * FROM SalesOrderHeader WHERE YEAR(OrderDate) = 2014;
+SELECT COUNT(*) AS Archived FROM SalesOrderHeader2014;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The plan's version. WHERE 1 = 0 copies the structure with no rows (Day 2), including the identity on SalesOrderID. The INSERT ... SELECT * then fails with error 8101: an explicit value for an identity column needs a column list and IDENTITY_INSERT ON. The count is 0.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">error 8101, nothing archived</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>3. INSERT from a SELECT. Copy the 2014 orders into an archive table. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">DROP TABLE SalesOrderHeader2014;
+-- UNION ALL makes SELECT INTO drop the IDENTITY property
+SELECT * INTO SalesOrderHeader2014 FROM SalesOrderHeader WHERE 1 = 0
+UNION ALL
+SELECT * FROM SalesOrderHeader WHERE 1 = 0;
+-- new batch, so the INSERT is compiled against the new table
+GO
+INSERT INTO SalesOrderHeader2014 SELECT * FROM SalesOrderHeader WHERE YEAR(OrderDate) = 2014;
+SELECT COUNT(*) AS Archived FROM SalesOrderHeader2014;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An archive should store the original SalesOrderID, so it should not have an identity. A known trick: when SELECT INTO reads from a UNION ALL, SQL Server does not copy the IDENTITY property. GO starts a new batch: without it, SQL Server compiles the whole batch while the old table (with its identity) still exists, and the INSERT fails with the same error. Now INSERT ... SELECT * works and archives the 11,761 orders from 2014.</p><p class="pin"><span aria-hidden="true">📍</span> An archive table should keep the original order IDs, not make new ones, so it should not have an identity at all.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">11,761 orders from 2014 archived</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>4. UPDATE one row. Always SELECT with the same WHERE first.</h3></div>
+        <pre><code class="language-sql">SELECT ProductID, Name, ListPrice FROM Product WHERE ProductID = 776;
+UPDATE Product SET ListPrice = ListPrice * 1.10 WHERE ProductID = 776;
+SELECT ProductID, Name, ListPrice FROM Product WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Before changing anything, SELECT with exactly the same WHERE to see which rows will be hit. The UPDATE then raises product 776's price by 10%: 3,374.99 becomes 3,712.49. The two result grids show before and after.</p><p class="pin"><span aria-hidden="true">📍</span> Habit: run a SELECT with the exact WHERE you will use, check the rows, then change SELECT to UPDATE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">before 3,374.99, after 3,712.49</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>5. UPDATE many rows with a calculation</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS RowsToChange FROM Product WHERE Color = 'Red' AND ListPrice &gt; 0;
+UPDATE Product SET ListPrice = ROUND(ListPrice * 1.05, 2) WHERE Color = 'Red' AND ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SET can use the column's current value in a calculation: each red product gets 5% more, rounded to 2 decimals. The count first predicts 38 rows, and the Messages tab confirms '(38 rows affected)'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows predicted, 38 rows affected</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>6. UPDATE with a JOIN. Raise prices on Bikes only.</h3></div>
+        <pre><code class="language-sql">UPDATE p
+SET p.ListPrice = p.ListPrice * 1.02
+FROM Product p
+JOIN AdventureWorks2022.Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+JOIN AdventureWorks2022.Production.ProductCategory c ON s.ProductCategoryID = c.ProductCategoryID
+WHERE c.Name = 'Bikes';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>T-SQL lets UPDATE use a FROM with joins: write UPDATE &lt;alias&gt;, then a normal FROM ... JOIN ... WHERE. Here the practice Product table is joined to the category tables in AdventureWorks2022 (database.schema.table names work across databases), and only Bikes get 2% more: 97 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">97 rows affected</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>7. DELETE with a WHERE, then DELETE with no WHERE</h3></div>
+        <pre><code class="language-sql">DELETE FROM Territory WHERE TerritoryID IN (12, 13);
+DELETE FROM SalesOrderHeader2014;
+SELECT COUNT(*) AS ArchiveRows FROM SalesOrderHeader2014;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The first DELETE removes just the two territories in the list. The second has no WHERE, so it removes every row of the archive (11,761) with no warning or confirmation. The count proves the table is empty, but it still exists.</p><p class="pin"><span aria-hidden="true">📍</span> A DELETE with no WHERE removes every row, with no warning. That is why the habits at the end of this page exist.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 territories and all 11,761 archive rows deleted; archive count 0</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>8. TRUNCATE vs DELETE. Faster, resets identity, cannot have WHERE.</h3></div>
+        <pre><code class="language-sql">INSERT INTO SalesOrderHeader2014 SELECT * FROM SalesOrderHeader WHERE YEAR(OrderDate) = 2014;
+SELECT COUNT(*) AS Refilled FROM SalesOrderHeader2014;
+TRUNCATE TABLE SalesOrderHeader2014;
+SELECT COUNT(*) AS AfterTruncate FROM SalesOrderHeader2014;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TRUNCATE TABLE also empties a table, but it releases whole data pages instead of deleting row by row, so it is much faster on big tables. It cannot have a WHERE, it resets an identity back to its seed, and it is blocked on tables referenced by a foreign key. It can still be rolled back inside a transaction.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">11,761 rows refilled, 0 after TRUNCATE</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>9. Transactions. The undo button.</h3></div>
+        <pre><code class="language-sql">BEGIN TRANSACTION;
+UPDATE Product SET ListPrice = 0;
+SELECT TOP 5 Name, ListPrice FROM Product ORDER BY ProductID DESC;   -- all zero
+ROLLBACK TRANSACTION;
+SELECT TOP 5 Name, ListPrice FROM Product ORDER BY ProductID DESC;   -- restored</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>BEGIN TRANSACTION starts a unit of work. The UPDATE with no WHERE sets all 504 prices to 0, and the first SELECT shows zeros. ROLLBACK TRANSACTION undoes everything since BEGIN, so the second SELECT shows the real prices again. ORDER BY ProductID DESC is added to the plan's SELECT: without it the first 5 rows are components that cost 0 anyway, so the rollback would look like it did nothing. Other users would not have seen the zeros, because the changed rows stay locked until the transaction ends.</p><p class="pin"><span aria-hidden="true">📍</span> Inside BEGIN TRANSACTION nothing is final. ROLLBACK undoes every change since BEGIN.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">prices are 0 inside the transaction, restored after ROLLBACK</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>9. Transactions. The undo button. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">BEGIN TRANSACTION;
+UPDATE Product SET Color = 'Black' WHERE Color IS NULL;
+SELECT COUNT(*) AS StillNull FROM Product WHERE Color IS NULL;   -- zero
+COMMIT TRANSACTION;   -- now it's permanent</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This time the change is kept. The 248 products with no colour become Black, the check shows 0 NULLs left, and COMMIT makes it permanent. After COMMIT there is no undo except restoring a backup, which is why you check the count before committing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">248 rows changed and committed; 0 NULL colours left</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>10. OUTPUT clause. See what you changed.</h3></div>
+        <pre><code class="language-sql">UPDATE Product SET ListPrice = ListPrice + 1
+OUTPUT deleted.ProductID, deleted.ListPrice AS OldPrice, inserted.ListPrice AS NewPrice
+WHERE ProductID BETWEEN 770 AND 775;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>OUTPUT returns the changed rows as a result set. deleted holds the values before the change and inserted the values after, so old and new prices sit side by side. Useful as an audit trail: OUTPUT ... INTO a log table records every change.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows, old and new price side by side</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>MERGE. Upsert territories from a staging table.</h3></div>
+        <pre><code class="language-sql">CREATE TABLE TerritoryStaging (TerritoryID INT, Name NVARCHAR(50), CountryRegionCode NVARCHAR(3), [Group] NVARCHAR(50));
+INSERT INTO TerritoryStaging VALUES (1, 'Northwest Region', 'US', 'North America'), (14, 'Bangladesh', 'BD', 'Asia');
+
+SET IDENTITY_INSERT Territory ON;
+MERGE Territory AS target
+USING TerritoryStaging AS source ON target.TerritoryID = source.TerritoryID
+WHEN MATCHED THEN UPDATE SET target.Name = source.Name
+WHEN NOT MATCHED THEN INSERT (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                              CostYTD, CostLastYear, rowguid, ModifiedDate)
+     VALUES (source.TerritoryID, source.Name, source.CountryRegionCode, source.[Group],
+             0, 0, 0, 0, NEWID(), GETDATE())
+OUTPUT $action, inserted.TerritoryID, inserted.Name;
+SET IDENTITY_INSERT Territory OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>MERGE compares a source (the staging table) with a target on a key. WHEN MATCHED updates existing rows; WHEN NOT MATCHED inserts new ones. This is an 'upsert', the core of loading data warehouses and what SSIS does later. OUTPUT $action shows what happened to each row: territory 1 was UPDATEd to 'Northwest Region' and 14, Bangladesh, was INSERTed. A MERGE must end with a semicolon.</p><p class="pin"><span aria-hidden="true">📍</span> Same identity issue as drill 1, so IDENTITY_INSERT is switched ON around the MERGE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows: INSERT Bangladesh, UPDATE Northwest Region</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Delete duplicates keeping the lowest ID</h3></div>
+        <pre><code class="language-sql">SET IDENTITY_INSERT Territory ON;
+INSERT INTO Territory (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                       CostYTD, CostLastYear, rowguid, ModifiedDate)
+SELECT TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+       CostYTD, CostLastYear, rowguid, ModifiedDate
+FROM Territory WHERE TerritoryID = 11;
+SET IDENTITY_INSERT Territory OFF;
+SELECT TerritoryID, Name FROM Territory WHERE TerritoryID = 11;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Making a duplicate on purpose. There is no primary key yet (Day 10 adds one), so nothing stops the same TerritoryID going in twice; the SELECT shows Pakistan twice. The plan's INSERT ... SELECT * needs a column list here, because of the identity again.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">TerritoryID 11 now appears twice</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Delete duplicates keeping the lowest ID <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">WITH Dupes AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY TerritoryID ORDER BY ModifiedDate) AS rn
+    FROM Territory
+)
+DELETE FROM Dupes WHERE rn &gt; 1;
+SELECT TerritoryID, Name FROM Territory WHERE TerritoryID = 11;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Day 8 de-duplication pattern, now actually deleting: ROW_NUMBER numbers each copy within its TerritoryID, and DELETE FROM the CTE removes every row numbered 2 or higher from the real table. One Pakistan row is left.</p><p class="pin"><span aria-hidden="true">📍</span> You can DELETE through a CTE: it deletes the underlying table rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 duplicate deleted; TerritoryID 11 appears once</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Forget the WHERE on purpose inside a transaction</h3></div>
+        <pre><code class="language-sql">BEGIN TRANSACTION;
+DELETE FROM Product;
+SELECT @@ROWCOUNT AS RowsDeleted;
+ROLLBACK TRANSACTION;
+SELECT COUNT(*) AS ProductsAfterRollback FROM Product;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The classic disaster, made safe. DELETE with no WHERE removes all 504 products; @@ROWCOUNT (the number of rows the last statement affected) shows 504, far more than you meant. ROLLBACK brings them all back, and the final count is 504 again. Inside a transaction a mistake is just a number to read.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">504 rows deleted, 504 back after ROLLBACK</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Q1. Insert three products with distinct IDs above 1000</h3></div>
+        <pre><code class="language-sql">SET IDENTITY_INSERT Product ON;
+INSERT INTO Product (ProductID, Name, ProductNumber, MakeFlag, FinishedGoodsFlag, SafetyStockLevel,
+                     ReorderPoint, StandardCost, ListPrice, DaysToManufacture, SellStartDate,
+                     rowguid, ModifiedDate)
+VALUES (1001, 'Practice Bottle', 'PR-1001', 0, 1, 100, 75, 2.00, 5.99, 0, GETDATE(), NEWID(), GETDATE()),
+       (1002, 'Practice Gloves', 'PR-1002', 0, 1, 100, 75, 8.00, 19.99, 0, GETDATE(), NEWID(), GETDATE()),
+       (1003, 'Practice Lock', 'PR-1003', 0, 1, 100, 75, 10.00, 24.99, 0, GETDATE(), NEWID(), GETDATE());
+SET IDENTITY_INSERT Product OFF;
+SELECT ProductID, Name, ListPrice FROM Product WHERE ProductID &gt; 1000;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every column that does not allow NULL must get a value, and SELECT INTO did not copy the defaults the original table had, so all 13 required columns are listed. IDENTITY_INSERT is needed again because ProductID is an identity. The check shows the three new products.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 new products</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Q2. Raise ListPrice 8 percent on everything in subcategory 1</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS RowsToChange FROM Product WHERE ProductSubcategoryID = 1;
+UPDATE Product SET ListPrice = ROUND(ListPrice * 1.08, 2) WHERE ProductSubcategoryID = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Count first with the same WHERE (32 mountain bikes), then update. The Messages tab confirms 32 rows affected, matching the prediction.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">32 rows predicted, 32 rows affected</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Q3. Delete orders from 2011 inside a transaction, check the count, roll back</h3></div>
+        <pre><code class="language-sql">BEGIN TRANSACTION;
+DELETE FROM SalesOrderHeader WHERE OrderDate &lt; '2012-01-01';
+SELECT @@ROWCOUNT AS RowsDeleted;
+SELECT COUNT(*) AS Orders2011Left FROM SalesOrderHeader WHERE OrderDate &lt; '2012-01-01';
+ROLLBACK TRANSACTION;
+SELECT COUNT(*) AS Orders2011AfterRollback FROM SalesOrderHeader WHERE OrderDate &lt; '2012-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The 1,607 orders from 2011 are deleted inside a transaction: @@ROWCOUNT reports 1,607 and the check finds 0 left. ROLLBACK restores them, and the final count is 1,607 again. The date range uses &lt; '2012-01-01' rather than YEAR() so it would also work well with an index.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1,607 deleted, 0 left, 1,607 again after ROLLBACK</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Q4. Archive all Shipped orders before 2012 into a new table with INSERT SELECT</h3></div>
+        <pre><code class="language-sql">SELECT * INTO ShippedArchivePre2012 FROM SalesOrderHeader WHERE 1 = 0
+UNION ALL
+SELECT * FROM SalesOrderHeader WHERE 1 = 0;
+INSERT INTO ShippedArchivePre2012
+SELECT * FROM SalesOrderHeader WHERE Status = 5 AND OrderDate &lt; '2012-01-01';
+SELECT COUNT(*) AS Archived FROM ShippedArchivePre2012;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Status 5 means Shipped (table map, Day 7). The empty archive is created with the UNION ALL trick from drill 3 so it keeps the original order IDs, then INSERT ... SELECT copies the 1,607 shipped orders from before 2012. Every 2011 order is shipped, so this matches Q3.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1,607 shipped orders archived</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>Q5. MERGE a staging table of two products, one existing and one new</h3></div>
+        <pre><code class="language-sql">CREATE TABLE ProductStaging (ProductID INT, Name NVARCHAR(50), ListPrice MONEY);
+INSERT INTO ProductStaging VALUES (776, 'Mountain-100 Black, 42', 2299.00), (1004, 'Practice Pump', 29.99);
+
+SET IDENTITY_INSERT Product ON;
+MERGE Product AS target
+USING ProductStaging AS source ON target.ProductID = source.ProductID
+WHEN MATCHED THEN UPDATE SET target.ListPrice = source.ListPrice, target.ModifiedDate = GETDATE()
+WHEN NOT MATCHED THEN INSERT (ProductID, Name, ProductNumber, MakeFlag, FinishedGoodsFlag, SafetyStockLevel,
+                              ReorderPoint, StandardCost, ListPrice, DaysToManufacture, SellStartDate,
+                              rowguid, ModifiedDate)
+     VALUES (source.ProductID, source.Name, 'PR-' + CAST(source.ProductID AS VARCHAR(10)), 0, 1, 100, 75,
+             0, source.ListPrice, 0, GETDATE(), NEWID(), GETDATE())
+OUTPUT $action, inserted.ProductID, inserted.Name, deleted.ListPrice AS OldPrice, inserted.ListPrice AS NewPrice;
+SET IDENTITY_INSERT Product OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Product 776 already exists, so MERGE takes the WHEN MATCHED branch and sets its price to 2,299.00 (after today's raises it had reached 4,089.68); 1004 is new, so it is inserted with every required column filled in. OUTPUT shows UPDATE and INSERT, and for the update deleted.ListPrice gives the old price beside the new one.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows: INSERT product 1004, UPDATE product 776</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>Habits that keep you employed:</strong> write the <code>WHERE</code> before the <code>SET</code>; run a <code>SELECT</code> with the same <code>WHERE</code> before any <code>UPDATE</code> or <code>DELETE</code>; wrap anything over 100 rows in a transaction and check the count before <code>COMMIT</code>; never run a bare <code>DELETE</code> or <code>UPDATE</code> on a production connection.</div><div class="tip"><strong>Not run:</strong> the plan's last step, <code>USE master; DROP DATABASE AWPractice;</code>, rebuilds the practice copy from scratch when it gets messy. <code>AWPractice</code> is kept for Day 10, which adds keys and constraints to it.</div>
+  <nav class="pager"><a href="../day8/">← Day 8: Window functions</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

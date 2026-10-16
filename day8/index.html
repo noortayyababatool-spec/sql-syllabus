@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 </head>
-<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/" aria-current="page">Day 8</a></nav></div></header>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/" aria-current="page">Day 8</a><a href="../day9/">Day 9</a></nav></div></header>
 <main class="wrap">
   <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 8</p>
   <h1>Day 8: Window functions</h1>
@@ -326,7 +326,7 @@ SELECT CustomerID, Revenue FROM Deciles WHERE Decile = 1 ORDER BY Revenue DESC;<
         </figure>
       </article></section>
   <div class="tip"><strong>Lesson from drill 5:</strong> a running total with <code>SUM() OVER (ORDER BY …)</code> and no frame uses <code>RANGE</code> by default, which fails when sorting by a long text value such as <code>FORMAT()</code>. Always write <code>ROWS UNBOUNDED PRECEDING</code> for running totals: it avoids the error and is faster.</div>
-  <nav class="pager"><a href="../day7/">← Day 7: Mock assessment</a><span></span></nav>
+  <nav class="pager"><a href="../day7/">← Day 7: Mock assessment</a><a href="../day9/">Day 9: INSERT, UPDATE, DELETE, MERGE, transactions →</a></nav>
 </main>
 <footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
 <dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
