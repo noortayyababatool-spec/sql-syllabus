@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 11: Stored procedures, functions, control flow · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/" aria-current="page">Day 11</a><a href="../day12/">Day 12</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 11</p>
+  <h1>Day 11: Stored procedures, functions, control flow</h1>
+  <p class="meta">Tue 13 October 2026 · 19 queries · run on AWPractice (a practice copy)</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> package logic so it can be called by name, scheduled, and called from SSIS.</p>
+    <p><strong>Read:</strong> W3Schools SQL Stored Procedures. Microsoft Learn: &quot;CREATE PROCEDURE&quot;, &quot;TRY...CATCH&quot;, &quot;DECLARE @local_variable&quot;.</p>
+  </div>
+  <div class="tip"><strong>Where this runs:</strong> in <code>AWPractice</code>, continuing from Day 10. Every object is created with <code>CREATE OR ALTER</code>, so the whole day can be re-run safely. This time every query in the plan ran as written.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>10</span></li><li><a href="#stretch">Stretch</a> <span>4</span></li><li><a href="#self-test">Self-test</a> <span>5</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Variables</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+GO
+DECLARE @Territory INT = 1, @Year INT = 2013;
+SELECT COUNT(*) AS Orders FROM SalesOrderHeader WHERE TerritoryID = @Territory AND YEAR(OrderDate) = @Year;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DECLARE creates a variable (its name starts with @), gives it a data type and optionally a starting value. The variable can then be used anywhere a literal value could go. Changing @Territory or @Year re-runs the same query for a different territory or year without editing the WHERE clause. Variables only live until the end of the batch.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: 2,053 orders in territory 1 in 2013</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Assign from a query, then use it</h3></div>
+        <pre><code class="language-sql">DECLARE @AvgPrice MONEY;
+SELECT @AvgPrice = AVG(ListPrice) FROM Product WHERE ListPrice &gt; 0;
+SELECT Name, ListPrice FROM Product WHERE ListPrice &gt; @AvgPrice * 2;
+PRINT 'Average price is ' + CAST(@AvgPrice AS VARCHAR(20));</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SELECT @var = expression stores a query result in a variable instead of returning it. Here the average price is calculated once and reused: the next SELECT lists products costing more than twice that. PRINT writes text to the Messages tab, and CAST is needed because a number cannot be joined to text with +. Remember that AWPractice prices were raised on Day 9, so they differ from AdventureWorks.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Results: 50 products over twice the average; Messages: the average price</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. IF / ELSE</h3></div>
+        <pre><code class="language-sql">DECLARE @Count INT = (SELECT COUNT(*) FROM Product WHERE Color IS NULL);
+IF @Count &gt; 0 PRINT 'Products with no colour: ' + CAST(@Count AS VARCHAR(10));
+ELSE PRINT 'All products have a colour';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>IF runs the next statement only when its condition is true; ELSE runs when it is false. A subquery in brackets can set a variable directly. On Day 9 the NULL colours were changed to Black and committed, so only the 4 practice products added later have no colour, and the IF branch prints that count.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Products with no colour: 4</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. WHILE. Rarely the right tool in SQL, but you need to read it.</h3></div>
+        <pre><code class="language-sql">DECLARE @i INT = 1;
+WHILE @i &lt;= 5
+BEGIN
+    PRINT 'Iteration ' + CAST(@i AS VARCHAR(2));
+    SET @i = @i + 1;
+END;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>WHILE repeats a block as long as its condition is true; BEGIN ... END groups several statements into one block. SET changes a variable's value. Forgetting to increase @i makes an endless loop. SQL is built to work on whole sets of rows at once, so loops are usually slower than one set-based statement; they are for admin scripts, not for processing data row by row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Iteration 1 to Iteration 5</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Your first stored procedure</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE dbo.usp_GetTerritoryOrders
+    @TerritoryID INT,
+    @Year INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT SalesOrderID, OrderDate, TotalDue
+    FROM SalesOrderHeader
+    WHERE TerritoryID = @TerritoryID AND YEAR(OrderDate) = @Year
+    ORDER BY OrderDate;
+END;
+GO
+EXEC dbo.usp_GetTerritoryOrders @TerritoryID = 1, @Year = 2013;
+EXEC dbo.usp_GetTerritoryOrders 4, 2014;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A stored procedure is a saved, named batch of SQL with parameters. CREATE OR ALTER makes it re-runnable (Day 10). SET NOCOUNT ON stops the '(n rows affected)' messages, which can confuse programs like SSIS that call the procedure. EXEC runs it: parameters can be passed by name (@TerritoryID = 1), which is clearer and order-independent, or by position (4, 2014). Each call returns its own result set.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets: territory 1 in 2013, then territory 4 in 2014</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Default parameter and an OUTPUT parameter</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE dbo.usp_TerritoryRevenue
+    @TerritoryID INT,
+    @Year INT = NULL,
+    @Revenue DECIMAL(18,2) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT @Revenue = SUM(TotalDue)
+    FROM SalesOrderHeader
+    WHERE TerritoryID = @TerritoryID AND (@Year IS NULL OR YEAR(OrderDate) = @Year);
+END;
+GO
+DECLARE @R DECIMAL(18,2);
+EXEC dbo.usp_TerritoryRevenue @TerritoryID = 1, @Revenue = @R OUTPUT;
+SELECT @R AS AllYears;
+EXEC dbo.usp_TerritoryRevenue @TerritoryID = 1, @Year = 2013, @Revenue = @R OUTPUT;
+SELECT @R AS Only2013;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>@Year = NULL is a default: callers can leave it out. The WHERE pattern (@Year IS NULL OR YEAR(OrderDate) = @Year) means 'no year given, so every year'. An OUTPUT parameter sends a value back to the caller instead of a result set: the caller passes a variable marked OUTPUT and reads it afterwards. OUTPUT is needed in both the procedure definition and the EXEC, or the value is silently not returned.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets: AllYears and Only2013 for territory 1</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. The load procedure. SSIS will call this on Day 13.</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE reporting.usp_LoadSalesSummary
+AS
+BEGIN
+    SET NOCOUNT ON;
+    TRUNCATE TABLE reporting.SalesSummary;
+    INSERT INTO reporting.SalesSummary (TerritoryID, YearMonth, OrderCount, Revenue)
+    SELECT TerritoryID, FORMAT(OrderDate, 'yyyy-MM'), COUNT(*), SUM(TotalDue)
+    FROM SalesOrderHeader GROUP BY TerritoryID, FORMAT(OrderDate, 'yyyy-MM');
+    SELECT @@ROWCOUNT AS RowsLoaded;
+END;
+GO
+EXEC reporting.usp_LoadSalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Day 10 re-runnable load, packaged so it can be called by name, scheduled, or called from SSIS. TRUNCATE empties the table first; the INSERT reloads it; @@ROWCOUNT, read straight after the INSERT, reports how many rows went in: 364, the same every time it runs. TRUNCATE works here because SalesSummary is the child in its foreign key; a table referenced by a foreign key cannot be truncated.</p><p class="pin"><span aria-hidden="true">📍</span> The Day 10 lesson, packaged: truncate then insert, so the load can be run any number of times.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: RowsLoaded = 364</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Scalar function</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER FUNCTION dbo.fn_PriceBand (@Price MONEY)
+RETURNS VARCHAR(10)
+AS
+BEGIN
+    RETURN CASE WHEN @Price &lt; 100 THEN 'Budget' WHEN @Price &lt; 1000 THEN 'Mid' ELSE 'Premium' END;
+END;
+GO
+SELECT Name, ListPrice, dbo.fn_PriceBand(ListPrice) AS Band FROM Product WHERE ListPrice &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A scalar function takes values and returns one value, and can be used inside a SELECT like a built-in function. The Day 6 price-band CASE is now written once and reused everywhere, so a change to the bands happens in one place. Scalar functions must be called with their schema (dbo.), and they run once per row, which is why the stretch below times one.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">308 priced products, each with its band</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. Inline table-valued function. Parameterised view.</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER FUNCTION dbo.fn_OrdersForYear (@Year INT)
+RETURNS TABLE
+AS RETURN (SELECT SalesOrderID, OrderDate, TerritoryID, TotalDue FROM SalesOrderHeader WHERE YEAR(OrderDate) = @Year);
+GO
+SELECT TerritoryID, SUM(TotalDue) AS Revenue2013 FROM dbo.fn_OrdersForYear(2013) GROUP BY TerritoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An inline table-valued function returns a whole table from a single SELECT, so it is used in FROM like a table or view. It behaves like a view that takes parameters. SQL Server expands it into the calling query, so it is as fast as writing the SELECT directly, unlike a scalar function. The column alias is added to the plan's SUM so the result column has a name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 territories with 2013 revenue</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. TRY / CATCH with a transaction</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE dbo.usp_SafeUpdate @ProductID INT, @NewPrice MONEY
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        IF @NewPrice &lt; 0 THROW 50001, 'Price cannot be negative', 1;
+        UPDATE Product SET ListPrice = @NewPrice WHERE ProductID = @ProductID;
+        IF @@ROWCOUNT = 0 THROW 50002, 'Product not found', 1;
+        COMMIT TRANSACTION;
+        PRINT 'Updated';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT &gt; 0 ROLLBACK TRANSACTION;
+        PRINT 'Error ' + CAST(ERROR_NUMBER() AS VARCHAR(10)) + ': ' + ERROR_MESSAGE();
+    END CATCH
+END;
+GO
+EXEC dbo.usp_SafeUpdate 776, 2500;
+EXEC dbo.usp_SafeUpdate 776, -1;
+EXEC dbo.usp_SafeUpdate 99999, 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>If anything inside BEGIN TRY fails, control jumps to BEGIN CATCH. THROW raises your own error (numbers from 50000 up are free for your use). @@TRANCOUNT tells you whether a transaction is still open, so the CATCH only rolls back when there is something to undo. ERROR_NUMBER() and ERROR_MESSAGE() describe what went wrong. The three calls show each path: a good update, a rejected negative price, and a missing product, which updates 0 rows and is rolled back.</p><p class="pin"><span aria-hidden="true">📍</span> The shape every load procedure should have: TRY, transaction, checks, COMMIT; CATCH, ROLLBACK, report.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Updated; Error 50001: Price cannot be negative; Error 50002: Product not found</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>See the code of a procedure</h3></div>
+        <pre><code class="language-sql">EXEC sp_helptext 'dbo.usp_GetTerritoryOrders';
+SELECT name, create_date, modify_date FROM sys.procedures;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>sp_helptext prints the stored source code of a procedure, view or function, one line per row. sys.procedures lists every procedure in the database with when it was created and last changed. Useful when you inherit a database and need to know what logic lives in it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets: the procedure's source code, then every procedure in AWPractice</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>Dynamic SQL, safely</h3></div>
+        <pre><code class="language-sql">DECLARE @Table NVARCHAR(100) = 'Product', @Sql NVARCHAR(MAX);
+SET @Sql = N'SELECT COUNT(*) AS RowsInTable FROM ' + QUOTENAME(@Table);
+EXEC sp_executesql @Sql;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Dynamic SQL builds a statement as text and runs it. It is needed when an object name (here a table) is only known at run time, because a table name cannot be a parameter. QUOTENAME wraps the name in [ ] so a malicious value cannot break out and inject extra SQL. For values (not names), pass real parameters to sp_executesql; never glue user input into the string.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: 508 rows in Product</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>Cursor. Read it once so you recognise it.</h3></div>
+        <pre><code class="language-sql">DECLARE @Name NVARCHAR(50);
+DECLARE c CURSOR FOR SELECT TOP 5 Name FROM Territory;
+OPEN c; FETCH NEXT FROM c INTO @Name;
+WHILE @@FETCH_STATUS = 0 BEGIN PRINT @Name; FETCH NEXT FROM c INTO @Name; END;
+CLOSE c; DEALLOCATE c;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A cursor walks through a query result one row at a time: OPEN, FETCH NEXT into variables, loop while @@FETCH_STATUS = 0 (a row was fetched), then CLOSE and DEALLOCATE to release it. It works, but it processes rows one by one, which is many times slower than a single set-based statement. Recognise it in old code; do not write new ones when a SELECT, UPDATE or MERGE can do the job.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: 5 territory names, one per line</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>A scalar function in a WHERE on a big table. Time it.</h3></div>
+        <pre><code class="language-sql">SET STATISTICS TIME ON;
+SELECT COUNT(*) AS PremiumLines FROM SalesOrderDetail WHERE dbo.fn_PriceBand(UnitPrice) = 'Premium';
+SELECT COUNT(*) AS PremiumLines FROM SalesOrderDetail WHERE UnitPrice &gt;= 1000;
+SET STATISTICS TIME OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SET STATISTICS TIME ON reports CPU and elapsed time for each statement in the Messages tab. Both queries count the same order lines, but the first calls the scalar function once per row, 121,317 calls, and SQL Server cannot optimise inside it. Writing the condition inline (UnitPrice &gt;= 1000) lets the engine evaluate it directly and, once indexes exist (Day 12), seek instead of scan.</p><p class="pin"><span aria-hidden="true">📍</span> Same answer, very different cost: the function runs once for each of 121,317 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: CPU and elapsed time for each query; both return the same count</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>Q1. A procedure that takes a year and returns revenue per territory name</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE reporting.usp_RevenueByTerritory @Year INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT t.Name AS Territory, SUM(h.TotalDue) AS Revenue
+    FROM SalesOrderHeader h
+    JOIN Territory t ON h.TerritoryID = t.TerritoryID
+    WHERE h.OrderDate &gt;= DATEFROMPARTS(@Year, 1, 1) AND h.OrderDate &lt; DATEFROMPARTS(@Year + 1, 1, 1)
+    GROUP BY t.Name
+    ORDER BY Revenue DESC;
+END;
+GO
+EXEC reporting.usp_RevenueByTerritory @Year = 2013;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A procedure wrapping the Day 6 join and grouping. DATEFROMPARTS builds a date from year, month and day, so the year becomes a start-inclusive, next-year-exclusive range (Day 2) instead of YEAR(OrderDate) = @Year, which would stop an index on OrderDate being used (Day 12). Territory 1 shows its Day 9 name, 'Northwest Region'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 territories by 2013 revenue</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Q2. A procedure with an OUTPUT parameter returning the count of products in a colour</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE dbo.usp_CountByColour @Colour NVARCHAR(15), @Products INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT @Products = COUNT(*) FROM Product WHERE Color = @Colour;
+END;
+GO
+DECLARE @n INT;
+EXEC dbo.usp_CountByColour @Colour = 'Red', @Products = @n OUTPUT;
+SELECT 'Red' AS Colour, @n AS Products;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The OUTPUT pattern from drill 6 again. COUNT(*) never returns NULL, so the caller always gets a number, even 0 for a colour with no products. 38 red products, as on Day 2.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: 38 red products</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Q3. A function returning the days between two dates, excluding weekends</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER FUNCTION dbo.fn_WorkingDays (@Start DATE, @End DATE)
+RETURNS INT
+AS
+BEGIN
+    -- Counts Monday to Friday from @Start up to (not including) @End
+    DECLARE @Days INT = DATEDIFF(day, @Start, @End);
+    DECLARE @Weeks INT = @Days / 7, @Extra INT = @Days % 7;
+    DECLARE @Count INT = @Weeks * 5, @d INT = 0;
+    WHILE @d &lt; @Extra
+    BEGIN
+        IF DATEPART(weekday, DATEADD(day, @Weeks * 7 + @d, @Start)) NOT IN (1, 7) SET @Count += 1;
+        SET @d += 1;
+    END;
+    RETURN @Count;
+END;
+GO
+SELECT dbo.fn_WorkingDays('2026-10-05', '2026-10-19') AS TwoWeeks,
+       dbo.fn_WorkingDays('2026-10-09', '2026-10-12') AS FriToMon;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every full week contributes 5 working days; only the leftover 0 to 6 days need checking one by one, so the loop runs at most 6 times however far apart the dates are. DATEPART(weekday, ...) returns 1 for Sunday and 7 for Saturday under the default @@DATEFIRST of 7. The tests check the answers: two full weeks gives 10, and Friday to Monday counts only the Friday, giving 1.</p><p class="pin"><span aria-hidden="true">📍</span> Assumes the default US weekday numbering (1 = Sunday, 7 = Saturday), shown by @@DATEFIRST = 7.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row: TwoWeeks = 10, FriToMon = 1</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Q4. A load procedure for reporting.ProductSales with TRY/CATCH and a row count</h3></div>
+        <pre><code class="language-sql">-- Day 10 dropped reporting.ProductSales, so recreate it first
+IF OBJECT_ID('reporting.ProductSales') IS NULL
+    CREATE TABLE reporting.ProductSales (
+        ProductID INT NOT NULL,
+        YearMonth CHAR(7) NOT NULL,
+        Qty INT NOT NULL CONSTRAINT CK_ProductSales_Qty CHECK (Qty &gt; 0),
+        Revenue DECIMAL(18,2) NOT NULL,
+        CONSTRAINT PK_ProductSales PRIMARY KEY (ProductID, YearMonth),
+        CONSTRAINT FK_ProductSales_Product FOREIGN KEY (ProductID) REFERENCES Product(ProductID)
+    );
+GO
+CREATE OR ALTER PROCEDURE reporting.usp_LoadProductSales
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        DELETE FROM reporting.ProductSales;
+        INSERT INTO reporting.ProductSales (ProductID, YearMonth, Qty, Revenue)
+        SELECT d.ProductID, CONVERT(char(7), h.OrderDate, 120), SUM(d.OrderQty), SUM(d.LineTotal)
+        FROM SalesOrderDetail d JOIN SalesOrderHeader h ON d.SalesOrderID = h.SalesOrderID
+        GROUP BY d.ProductID, CONVERT(char(7), h.OrderDate, 120);
+        DECLARE @Rows INT = @@ROWCOUNT;
+        COMMIT TRANSACTION;
+        SELECT @Rows AS RowsLoaded;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT &gt; 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 10's self-test dropped the table, so it is recreated (only if missing) with its composite key, CHECK and foreign key. The procedure uses the drill 10 shape. DELETE is used instead of TRUNCATE because it can be rolled back with everything else if the INSERT fails. @@ROWCOUNT is saved into a variable straight after the INSERT, before COMMIT resets it. In the CATCH, a bare THROW re-raises the original error, so the caller (or SSIS) sees the load failed instead of a quiet success.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Q4. A load procedure for reporting.ProductSales with TRY/CATCH and a row count <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Call it twice and prove the row count is the same both times
+EXEC reporting.usp_LoadProductSales;
+EXEC reporting.usp_LoadProductSales;
+SELECT COUNT(*) AS RowsInTable FROM reporting.ProductSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Running the load twice returns 3,862 both times, and the table holds 3,862 rows, not 7,724. The procedure is idempotent: running it again gives the same result instead of duplicates or a key error. That is the property every scheduled load needs, because jobs get re-run after failures.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">three result sets: RowsLoaded 3,862, RowsLoaded 3,862, RowsInTable 3,862</span></figcaption>
+        </figure>
+      </article></section>
+  <div class="tip"><strong>What you built today:</strong> 7 stored procedures and 3 functions in <code>AWPractice</code>, including <code>reporting.usp_LoadSalesSummary</code> (364 rows) and <code>reporting.usp_LoadProductSales</code> (3,862 rows), both safe to run again and again. SSIS calls the first one on Day 13.</div>
+  <nav class="pager"><a href="../day10/">← Day 10: Tables, constraints, views, temp tables</a><a href="../day12/">Day 12: Indexes and execution plans →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

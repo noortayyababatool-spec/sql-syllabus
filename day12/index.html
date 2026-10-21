@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 12: Indexes and execution plans · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/" aria-current="page">Day 12</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 12</p>
+  <h1>Day 12: Indexes and execution plans</h1>
+  <p class="meta">Wed 14 October 2026 · 32 queries · run on AWPractice (a practice copy)</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> read an execution plan, know what an index does, and explain why a query is slow in one sentence.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;Clustered and nonclustered indexes described&quot; and &quot;Display an actual execution plan&quot;. Brent Ozar, &quot;How to think like the SQL Server engine&quot; (first 30 minutes).</p>
+  </div>
+  <div class="tip"><strong>The sentence you need:</strong> a slow query is usually a <em>scan</em> where a <em>seek</em> was possible, caused by no index, a function wrapped around the column, a leading wildcard, or an implicit conversion. Check those four before anything else.</div><div class="tip"><strong>How to read the numbers:</strong> every screenshot shows the actual execution plan. The caption gives the <em>logical reads</em> from SET STATISTICS IO: each read is one 8 KB page, so fewer reads means less work.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>19</span></li><li><a href="#stretch">Stretch</a> <span>5</span></li><li><a href="#self-test">Self-test</a> <span>8</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Setup: turn on reads and timings</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+GO
+-- Query menu &gt; Include Actual Execution Plan (Ctrl+M) is switched on for the whole day
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>STATISTICS IO reports, for every table a query touches, how many 8 KB pages it read: 'logical reads'. That number is the best single measure of how much work a query did. STATISTICS TIME adds CPU and elapsed time. Include Actual Execution Plan (Ctrl+M) adds an Execution plan tab showing the steps SQL Server actually took. All three stay on for this query window.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>1. A lookup on a heap. Table Scan.</h3></div>
+        <pre><code class="language-sql">SELECT * FROM SalesOrderDetail WHERE SalesOrderID = 43659;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SalesOrderDetail was copied with SELECT INTO, so it is a heap: rows stored in no particular order, with no index. To find order 43659 SQL Server has no choice but to read every page and check every row: a Table Scan, 1,494 logical reads (about 12 MB) for 12 rows. Read a plan from right to left; the arrow thickness shows how many rows flow between steps.</p><p class="pin"><span aria-hidden="true">📍</span> No index means SQL Server must read every page of the table, 1,494 of them, to find 12 rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Table Scan. Messages: 1,494 logical reads to return 12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>2. Add a clustered index. Clustered Index Seek.</h3></div>
+        <pre><code class="language-sql">CREATE CLUSTERED INDEX CIX_SalesOrderDetail ON SalesOrderDetail (SalesOrderID, SalesOrderDetailID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>2. Add a clustered index. Clustered Index Seek. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT * FROM SalesOrderDetail WHERE SalesOrderID = 43659;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A clustered index sorts the table itself by its key, here SalesOrderID then SalesOrderDetailID, and builds a tree above it, like the alphabetical order of a phone book. A table can have only one. Now SQL Server walks the tree straight to order 43659: a Clustered Index Seek, 3 logical reads instead of 1,494. Creating the index read the whole table once, which is a one-off cost.</p><p class="pin"><span aria-hidden="true">📍</span> Same query, same 12 rows: 1,494 reads became 3. That is what an index is for.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Clustered Index Seek. Messages: 3 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>3. A lookup on a column with no index. Scan again.</h3></div>
+        <pre><code class="language-sql">SELECT * FROM SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The clustered index is sorted by order number, not by product, so it does not help find ProductID 776. SQL Server reads the whole clustered index instead: a Clustered Index Scan, 1,513 reads. A scan of a clustered index is the same amount of work as a table scan; the name changes because the table is now stored inside the index.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Clustered Index Scan. Messages: 1,513 logical reads for 228 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>4. Nonclustered index on ProductID. Seek plus Key Lookup.</h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_SalesOrderDetail_ProductID ON SalesOrderDetail (ProductID);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>4. Nonclustered index on ProductID. Seek plus Key Lookup. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT * FROM SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A nonclustered index is a separate, sorted copy of just its key column (ProductID) plus a pointer to the full row: the clustered key. The seek finds the 228 order lines for product 776 quickly, but SELECT * needs every column, so for each row SQL Server follows the pointer back into the clustered index: a Key Lookup, about 3 reads per row. Total 710 reads: better than 1,513, but the lookups are most of the cost. Hovering the Key Lookup icon shows its Output List, the columns it had to fetch.</p><p class="pin"><span aria-hidden="true">📍</span> Key Lookup: the index found the rows, but SELECT * needs columns the index does not hold, so each of the 228 rows is fetched separately.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek + Key Lookup (Nested Loops). Messages: 710 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>5. Covering index. INCLUDE the columns you select.</h3></div>
+        <pre><code class="language-sql">SELECT ProductID, OrderQty, LineTotal FROM SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Selecting only three columns does not help yet: OrderQty and LineTotal are still not in the ProductID index, so every row still needs a Key Lookup, and the reads stay at 710.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek + Key Lookup. Messages: 710 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>5. Covering index. INCLUDE the columns you select. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_SalesOrderDetail_ProductID_Covering ON SalesOrderDetail (ProductID) INCLUDE (OrderQty, LineTotal);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>5. Covering index. INCLUDE the columns you select. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT ProductID, OrderQty, LineTotal FROM SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INCLUDE stores extra columns in the bottom level of the index without sorting by them. Now the index holds everything this query asks for, so it 'covers' the query: one Index Seek, no lookups, 5 reads instead of 710. The trade-off is space and slower writes, because every INSERT, UPDATE or DELETE must now maintain one more copy of those columns (drill 9).</p><p class="pin"><span aria-hidden="true">📍</span> 710 reads became 5. A covering index holds every column the query needs.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek only, no Key Lookup. Messages: 5 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>6. A function on the indexed column kills the seek</h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_SalesOrderHeader_OrderDate ON SalesOrderHeader (OrderDate);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>6. A function on the indexed column kills the seek <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Orders2013 FROM SalesOrderHeader WHERE YEAR(OrderDate) = 2013;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>With YEAR() wrapped around OrderDate, SQL Server cannot use the sorted order of the index, because it would have to calculate YEAR() for every row to know which ones match. So it scans the entire OrderDate index: 88 reads. (It scans the small index rather than the 780-page table, because the index holds the only column the query needs.)</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Scan of the whole OrderDate index. Messages: 88 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>6. A function on the indexed column kills the seek <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Orders2013 FROM SalesOrderHeader WHERE OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Written as a date range on the bare column (the Day 2 habit), the condition matches the index order directly: SQL Server seeks to 1 January 2013 and reads until 1 January 2014. Index Seek, 41 reads instead of 88, the same 14,182 orders. The gap grows with table size: on a table with years of data, the function version reads everything and the range version reads one year.</p><p class="pin"><span aria-hidden="true">📍</span> Same 14,182 orders, half the reads. Never wrap a filtered column in a function; rewrite the condition as a range.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek on the 2013 range. Messages: 41 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>7. Leading wildcard kills the seek too</h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_Product_Name ON Product (Name);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>7. Leading wildcard kills the seek too <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Product WHERE Name LIKE 'Mountain%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LIKE 'Mountain%' fixes the start of the text, and the index is sorted alphabetically, so SQL Server can seek straight to 'Mountain' and stop at the first name after it, like opening a dictionary at M: Index Seek, 3 reads.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek. Messages: 3 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>7. Leading wildcard kills the seek too <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Product WHERE Name LIKE '%Mountain%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>With a wildcard at the start, the text could begin with anything, so the alphabetical order is no help and every name must be checked: Index Scan. Product is tiny (6 reads), but on a table with millions of rows this is the difference between instant and minutes. Searching inside text at scale needs full-text search, not LIKE '%...%'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Scan. Messages: 6 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>8. See what indexes exist and how big they are</h3></div>
+        <pre><code class="language-sql">SELECT i.name, i.type_desc, OBJECT_NAME(i.object_id) AS TableName
+FROM sys.indexes i WHERE OBJECT_NAME(i.object_id) IN ('SalesOrderDetail', 'SalesOrderHeader', 'Product');
+EXEC sp_spaceused 'SalesOrderDetail';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>sys.indexes lists every index. A table with no clustered index shows a row of type HEAP (SalesOrderHeader is still a heap). sp_spaceused shows the space a table uses: index_size is the space taken by its nonclustered indexes, which here is a large fraction of the data size. Indexes are not free.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of query 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: query 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">two result sets: the indexes on the three tables, and SalesOrderDetail's size</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>9. Index write cost. Time an UPDATE with and without the indexes.</h3></div>
+        <pre><code class="language-sql">UPDATE SalesOrderDetail SET OrderQty = OrderQty WHERE ProductID = 776;
+DROP INDEX IX_SalesOrderDetail_ProductID ON SalesOrderDetail;
+DROP INDEX IX_SalesOrderDetail_ProductID_Covering ON SalesOrderDetail;
+UPDATE SalesOrderDetail SET OrderQty = OrderQty WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every index is a copy of some columns that must be kept in step with the table. With the two ProductID indexes in place, the UPDATE seeks its 228 rows quickly but must also write OrderQty into the covering index. After dropping them, finding the rows means scanning the table again. On a busy table, every extra index makes every INSERT, UPDATE and DELETE slower, so you index for the queries that matter, not for every column.</p><p class="pin"><span aria-hidden="true">📍</span> Indexes speed up reads and slow down writes. The first UPDATE finds its rows fast; the second has to scan.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of query 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: query 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: reads and times for the UPDATE with indexes, then without</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>10. Missing index hint</h3></div>
+        <pre><code class="language-sql">SELECT * FROM SalesOrderHeader WHERE CustomerID = 29825;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SalesOrderHeader is a heap with no index on CustomerID, so 12 orders cost a 780-page Table Scan. The optimiser notices this and prints a green 'Missing Index' line at the top of the plan, with its estimated improvement and a CREATE INDEX statement (right-click &gt; Missing Index Details). Treat it as a hint, not an order: it only considers this one query and never warns about write cost.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of query 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: query 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Table Scan, with a green Missing Index suggestion. Messages: 780 logical reads</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Compare against the real thing. AdventureWorks has proper indexes.</h3></div>
+        <pre><code class="language-sql">SELECT * FROM AdventureWorks2022.Sales.SalesOrderDetail WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>AdventureWorks2022 was built with proper indexes, including a clustered primary key and a nonclustered index on ProductID, so the same query uses the drill 4 shape: Index Seek plus Key Lookup, about 710 reads. That is what drill 4 rebuilt by hand.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of query 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: query 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek + Key Lookup on AdventureWorks' own ProductID index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Join plan shapes</h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, d.ProductID FROM SalesOrderHeader h
+JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID WHERE h.SalesOrderID = 43659;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Nested Loops: for each row from one input, look up matching rows in the other. Best when one side is small, as here with a single order. The seek on SalesOrderDetail's clustered index makes each lookup cheap.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of query 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: query 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Nested Loops join</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Join plan shapes <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT h.SalesOrderID, d.ProductID FROM SalesOrderHeader h
+JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Without a filter both sides are large and SalesOrderHeader is an unsorted heap, so SQL Server builds a hash table from one input in memory and probes it with the other: Hash Match, the workhorse for big unsorted joins. A Merge Join appears when both inputs arrive already sorted on the join key, for example when both tables have clustered indexes on SalesOrderID.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of query 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: query 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Hash Match join over the full tables</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Statistics and fragmentation</h3></div>
+        <pre><code class="language-sql">UPDATE STATISTICS SalesOrderDetail;
+SELECT OBJECT_NAME(object_id) AS TableName, index_id, avg_fragmentation_in_percent
+FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') WHERE index_id &gt; 0;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Statistics are SQL Server's summary of how values are distributed in a column; the optimiser uses them to estimate how many rows each step returns. When the estimated and actual row counts in a plan are far apart, stale statistics are a common cause, and UPDATE STATISTICS refreshes them. sys.dm_db_index_physical_stats reports fragmentation: how out of order an index's pages are after many changes. Freshly built indexes, like today's, are close to 0%.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of query 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: query 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">index fragmentation per index, all near 0% after today's fresh builds</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>What is running right now</h3></div>
+        <pre><code class="language-sql">SELECT session_id, status, command, cpu_time, total_elapsed_time, text
+FROM sys.dm_exec_requests CROSS APPLY sys.dm_exec_sql_text(sql_handle) WHERE session_id &gt; 50;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>sys.dm_exec_requests lists every request running on the server at this moment; CROSS APPLY sys.dm_exec_sql_text shows the SQL text of each. Session IDs above 50 are user sessions. On a quiet practice server the only row is this query itself; at work, this is the first query to run when 'the database is slow'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of query 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: query 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">the requests running right now: just this query</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>Q2. SalesPersonID and OrderDate: make it seek, prove it with reads</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, TotalDue FROM SalesOrderHeader
+WHERE SalesPersonID = 277 AND OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Before: the IX_SalesOrderHeader_OrderDate index from drill 6 could find 2013, but that is 14,182 rows to check one by one, so SQL Server scans the heap instead: 780 reads for salesperson 277's 185 orders.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of query 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: query 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Before: Table Scan, 780 logical reads for 185 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>Q2. SalesPersonID and OrderDate: make it seek, prove it with reads <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_SalesOrderHeader_SalesPerson_OrderDate
+    ON SalesOrderHeader (SalesPersonID, OrderDate) INCLUDE (SalesOrderID, TotalDue);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of query 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: query 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>Q2. SalesPersonID and OrderDate: make it seek, prove it with reads <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, TotalDue FROM SalesOrderHeader
+WHERE SalesPersonID = 277 AND OrderDate &gt;= '2013-01-01' AND OrderDate &lt; '2014-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Key order matters: the column tested with = goes first, the range column second, so all of salesperson 277's 2013 orders sit next to each other in the index. On this heap, SalesOrderID also has to be INCLUDEd: a nonclustered index on a heap points to rows by a physical address, not by SalesOrderID, so without it every row would need a lookup, and in testing SQL Server ignored that version and kept scanning 780 pages. With it the index covers the query: Index Seek, 4 reads instead of 780.</p><p class="pin"><span aria-hidden="true">📍</span> Equality column first, range column second. And on a heap, SalesOrderID must be INCLUDEd too.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of query 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: query 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">After: Index Seek, 4 logical reads</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>Q3. A Day 6 query that benefits from an index</h3></div>
+        <pre><code class="language-sql">-- Day 6 drill 3: revenue per customer, top 5
+CREATE NONCLUSTERED INDEX IX_SalesOrderHeader_CustomerID ON SalesOrderHeader (CustomerID) INCLUDE (TotalDue);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Builds the index used in the next step. The plan shows how: SQL Server reads the whole table once, sorts the rows by the index key, and writes the sorted copy. That one-off cost is paid when the index is created, and a little more on every later INSERT, UPDATE and DELETE.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of query 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: query 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan of the index build: read the table, sort by the key, write the index</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q29">
+        <div class="q-head"><span class="num">#29</span><h3>Q3. A Day 6 query that benefits from an index <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 CustomerID, SUM(TotalDue) AS Revenue
+FROM SalesOrderHeader GROUP BY CustomerID ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 6's revenue-per-customer query needs only CustomerID and TotalDue. An index on CustomerID that INCLUDEs TotalDue holds just those two columns, already sorted by customer, so SQL Server reads that narrow index (about 104 pages) instead of the 780-page table, and can aggregate in order without a separate sort. The same index also fixes drill 10's missing-index warning: the lookup for customer 29825 becomes a seek.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_29.png" aria-label="Enlarge screenshot of query 29"><img src="shots/q_29.png" loading="lazy" alt="SSMS screenshot: query 29 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Scan of the narrow CustomerID index. Messages: about 104 reads instead of 780</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q30">
+        <div class="q-head"><span class="num">#30</span><h3>Q4. Rewrite LEFT(Name, 5) = 'Mount' so it can use the Name index</h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Product WHERE LEFT(Name, 5) = 'Mount';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>LEFT() wraps the column, the same problem as YEAR() in drill 6: SQL Server cannot seek, so it scans the Name index.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_30.png" aria-label="Enlarge screenshot of query 30"><img src="shots/q_30.png" loading="lazy" alt="SSMS screenshot: query 30 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Scan (function on the column)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q31">
+        <div class="q-head"><span class="num">#31</span><h3>Q4. Rewrite LEFT(Name, 5) = 'Mount' so it can use the Name index <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT Name FROM Product WHERE Name LIKE 'Mount%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>'Starts with Mount' written as LIKE 'Mount%' leaves the column bare and fixes the start of the text, so it seeks on IX_Product_Name: the same 38 products with half the reads. This is the third of the four slow-query causes: a function around the column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_31.png" aria-label="Enlarge screenshot of query 31"><img src="shots/q_31.png" loading="lazy" alt="SSMS screenshot: query 31 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek, same 38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q32">
+        <div class="q-head"><span class="num">#32</span><h3>Q5. Drop every index created today and confirm with sys.indexes</h3></div>
+        <pre><code class="language-sql">DROP INDEX IF EXISTS CIX_SalesOrderDetail ON SalesOrderDetail;
+DROP INDEX IF EXISTS IX_SalesOrderHeader_OrderDate ON SalesOrderHeader;
+DROP INDEX IF EXISTS IX_SalesOrderHeader_SalesPerson_OrderDate ON SalesOrderHeader;
+DROP INDEX IF EXISTS IX_SalesOrderHeader_CustomerID ON SalesOrderHeader;
+DROP INDEX IF EXISTS IX_Product_Name ON Product;
+SELECT OBJECT_NAME(object_id) AS TableName, name, type_desc FROM sys.indexes
+WHERE OBJECT_NAME(object_id) IN ('SalesOrderDetail', 'SalesOrderHeader', 'Product');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DROP INDEX IF EXISTS removes each index without failing if one is already gone (drill 9 dropped two). Afterwards sys.indexes shows SalesOrderDetail and SalesOrderHeader back to HEAP, and Product keeps only PK_Product, the primary key from Day 10, which was not created today.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_32.png" aria-label="Enlarge screenshot of query 32"><img src="shots/q_32.png" loading="lazy" alt="SSMS screenshot: query 32 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Only HEAP entries and Day 10's PK_Product remain</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Self-test Q1: one line each</h2><div class="tip"><strong>Clustered index:</strong> the table itself, stored sorted by the index key; one per table. <strong>Nonclustered index:</strong> a separate sorted copy of a few columns with a pointer back to the full row; many per table. <strong>Covering index:</strong> a nonclustered index that holds every column a query needs (key plus INCLUDE), so no lookups back to the table.</div><div class="tip"><strong>Today in numbers:</strong> heap scan 1,494 reads → clustered seek 3 · ProductID seek with key lookups 710 → covering seek 5 · YEAR() scan 88 → date range seek 41 · SalesPersonID scan 780 → covering seek 4.</div>
+  <nav class="pager"><a href="../day11/">← Day 11: Stored procedures, functions, control flow</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

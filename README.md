@@ -23,6 +23,8 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 | [8](day8/) | Window functions | ROW_NUMBER, RANK, DENSE_RANK, top-N per group, running totals and frames, LAG/LEAD, percent of total, NTILE, FIRST_VALUE, moving averages, de-duplication, gap detection | 22 |
 | [9](day9/) | INSERT, UPDATE, DELETE, MERGE, transactions | A practice database built with SELECT INTO, identity columns and IDENTITY_INSERT, INSERT from SELECT, UPDATE with a JOIN, DELETE vs TRUNCATE, BEGIN/ROLLBACK/COMMIT, OUTPUT, MERGE upserts, deleting duplicates | 24 |
 | [10](day10/) | Tables, constraints, views, temp tables | CREATE TABLE with PRIMARY KEY, UNIQUE, CHECK, DEFAULT and NOT NULL; breaking each constraint; foreign keys; ALTER TABLE on constrained columns; re-runnable loads; views; #temp, ##global and @table variables; computed columns; schemas; CREATE OR ALTER | 22 |
+| [11](day11/) | Stored procedures, functions, control flow | Variables, IF/WHILE, procedures with default and OUTPUT parameters, a re-runnable load procedure, scalar and inline table-valued functions, TRY/CATCH with transactions, dynamic SQL, cursors, the cost of scalar functions | 19 |
+| [12](day12/) | Indexes and execution plans | Heaps vs clustered indexes, nonclustered indexes and key lookups, covering indexes, why functions and leading wildcards prevent seeks, index write cost, missing-index hints, join operators, logical reads before and after | 32 |
 
 ## Findings worth knowing about AdventureWorks2022
 
