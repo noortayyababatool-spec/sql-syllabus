@@ -1,0 +1,196 @@
+<?xml version="1.0"?>
+<DTS:Executable xmlns:DTS="www.microsoft.com/SqlServer/Dts" DTS:refId="Package" DTS:CreationDate="10/27/2026 11:07:28 PM" DTS:CreationName="Microsoft.Package" DTS:CreatorComputerName="NOOR-TAYYABA" DTS:CreatorName="NOOR-TAYYABA\muhammad" DTS:Description="Day 13: load reporting.SalesSummary in AWPractice from AdventureWorks2022" DTS:DTSID="{7803D3C7-3DDC-4D51-91BB-6338B8208407}" DTS:ExecutableType="Microsoft.Package" DTS:LastModifiedProductVersion="17.0.1000.7" DTS:LocaleID="1033" DTS:ObjectName="LoadSalesSummary_2_DataConversion" DTS:VersionGUID="{65C81927-E26D-4B30-8DE0-E870800A2995}">
+  <DTS:Property DTS:Name="PackageFormatVersion">8</DTS:Property>
+  <DTS:ConnectionManagers>
+    <DTS:ConnectionManager DTS:refId="Package.ConnectionManagers[DST_AWPractice]" DTS:CreationName="OLEDB" DTS:DTSID="{B8895CE2-2E7E-405B-8C00-BDC513F68F8A}" DTS:ObjectName="DST_AWPractice">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager DTS:ConnectRetryCount="1" DTS:ConnectRetryInterval="5" DTS:ConnectionString="Data Source=localhost\SQLEXPRESS;Initial Catalog=AWPractice;Provider=MSOLEDBSQL19;Integrated Security=SSPI;Use Encryption for Data=Optional;Application Name=SSIS-AWReporting;" />
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+    <DTS:ConnectionManager DTS:refId="Package.ConnectionManagers[SRC_AdventureWorks]" DTS:CreationName="OLEDB" DTS:DTSID="{FB17C039-0B53-404C-B8BC-133161879C88}" DTS:ObjectName="SRC_AdventureWorks">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager DTS:ConnectRetryCount="1" DTS:ConnectRetryInterval="5" DTS:ConnectionString="Data Source=localhost\SQLEXPRESS;Initial Catalog=AdventureWorks2022;Provider=MSOLEDBSQL19;Integrated Security=SSPI;Use Encryption for Data=Optional;Application Name=SSIS-AWReporting;" />
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+  </DTS:ConnectionManagers>
+  <DTS:Variables />
+  <DTS:Executables>
+    <DTS:Executable DTS:refId="Package\DFT Load Sales Summary" DTS:CreationName="Microsoft.Pipeline" DTS:DTSID="{F2C81880-94BF-4770-8332-638FDB1AC2F1}" DTS:ExecutableType="Microsoft.Pipeline" DTS:LocaleID="-1" DTS:ObjectName="DFT Load Sales Summary" DTS:TaskContact="Performs high-performance data extraction, transformation and loading;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1">
+      <DTS:Variables />
+      <DTS:ObjectData>
+        <pipeline version="1">
+          <components>
+            <component refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar" componentClassID="Microsoft.DataConvert" contactInfo="Data Conversion;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;0" description="Data Conversion" name="DCV YearMonth to varchar" usesDispositions="true">
+              <inputs>
+                <input refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Inputs[Data Conversion Input]" name="Data Conversion Input">
+                  <inputColumns>
+                    <inputColumn refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Inputs[Data Conversion Input].Columns[YearMonth]" cachedDataType="wstr" cachedLength="4000" cachedName="YearMonth" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[YearMonth]" />
+                  </inputColumns>
+                  <externalMetadataColumns />
+                </input>
+              </inputs>
+              <outputs>
+                <output refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Output]" exclusionGroup="1" name="Data Conversion Output" synchronousInputId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Inputs[Data Conversion Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Output].Columns[YearMonth_vc]" codePage="1252" dataType="str" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" length="10" lineageId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Output].Columns[YearMonth_vc]" name="YearMonth_vc" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property containsID="true" dataType="System.Int32" description="Specifies the input column used as the source of data for the conversion." name="SourceInputColumnLineageID">#{Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[YearMonth]}</property>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                      </properties>
+                    </outputColumn>
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+                <output refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Error Output]" exclusionGroup="1" isErrorOut="true" name="Data Conversion Error Output" synchronousInputId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Inputs[Data Conversion Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+            <component refId="Package\DFT Load Sales Summary\DER LoadedAt and Source" componentClassID="Microsoft.DerivedColumn" contactInfo="Derived Column;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;0" description="Creates new column values by applying expressions to transformation input columns. Create new columns or overwrite existing ones. For example, concatenate the values from the 'first name' and 'last name' column to make a 'full name' column." name="DER LoadedAt and Source" usesDispositions="true">
+              <inputs>
+                <input refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Inputs[Derived Column Input]" description="Input to the Derived Column Transformation" name="Derived Column Input">
+                  <externalMetadataColumns />
+                </input>
+              </inputs>
+              <outputs>
+                <output refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output]" description="Default Output of the Derived Column Transformation" exclusionGroup="1" name="Derived Column Output" synchronousInputId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Inputs[Derived Column Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output].Columns[LoadedAt]" dataType="dbTimeStamp" errorRowDisposition="FailComponent" lineageId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output].Columns[LoadedAt]" name="LoadedAt" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.String" name="Expression">GETDATE()</property>
+                        <property dataType="System.String" name="FriendlyExpression">GETDATE()</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output].Columns[Source]" dataType="wstr" errorRowDisposition="FailComponent" length="4" lineageId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output].Columns[Source]" name="Source" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.String" name="Expression">"SSIS"</property>
+                        <property dataType="System.String" name="FriendlyExpression">"SSIS"</property>
+                      </properties>
+                    </outputColumn>
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+                <output refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Error Output]" description="Error Output of the Derived Column Transformation" exclusionGroup="1" isErrorOut="true" name="Derived Column Error Output" synchronousInputId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Inputs[Derived Column Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+            <component refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary" componentClassID="Microsoft.OLEDBDestination" contactInfo="OLE DB Destination;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;4" description="OLE DB Destination" name="OLE DST reporting SalesSummary" usesDispositions="true" version="4">
+              <properties>
+                <property dataType="System.Int32" description="The number of seconds before a command times out.  A value of 0 indicates an infinite time-out." name="CommandTimeout">0</property>
+                <property dataType="System.String" description="Specifies the name of the database object used to open a rowset." name="OpenRowset">[reporting].[SalesSummary]</property>
+                <property dataType="System.String" description="Specifies the variable that contains the name of the database object used to open a rowset." name="OpenRowsetVariable">
+                </property>
+                <property dataType="System.String" description="The SQL command to be executed." name="SqlCommand" UITypeEditor="Microsoft.DataTransformationServices.Controls.ModalMultilineStringEditor">
+                </property>
+                <property dataType="System.Int32" description="Specifies the column code page to use when code page information is unavailable from the data source." name="DefaultCodePage">1252</property>
+                <property dataType="System.Boolean" description="Forces the use of the DefaultCodePage property value when describing character data." name="AlwaysUseDefaultCodePage">false</property>
+                <property dataType="System.Int32" description="Specifies the mode used to access the database." name="AccessMode" typeConverter="AccessMode">3</property>
+                <property dataType="System.Boolean" description="Indicates whether the values supplied for identity columns will be copied to the destination. If false, values for identity columns will be auto-generated at the destination. Applies only if fast load is turned on." name="FastLoadKeepIdentity">false</property>
+                <property dataType="System.Boolean" description="Indicates whether the columns containing null will have null inserted in the destination. If false, columns containing null will have their default values inserted at the destination. Applies only if fast load is turned on." name="FastLoadKeepNulls">false</property>
+                <property dataType="System.String" description="Specifies options to be used with fast load.  Applies only if fast load is turned on." name="FastLoadOptions">
+                </property>
+                <property dataType="System.Int32" description="Specifies when commits are issued during data insertion.  A value of 0 specifies that one commit will be issued at the end of data insertion.  Applies only if fast load is turned on." name="FastLoadMaxInsertCommitSize">2147483647</property>
+              </properties>
+              <connections>
+                <connection refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Connections[OleDbConnection]" connectionManagerID="Package.ConnectionManagers[DST_AWPractice]" connectionManagerRefId="Package.ConnectionManagers[DST_AWPractice]" description="The OLE DB runtime connection used to access the database." name="OleDbConnection" />
+              </connections>
+              <inputs>
+                <input refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input]" errorOrTruncationOperation="Insert" errorRowDisposition="FailComponent" hasSideEffects="true" name="OLE DB Destination Input">
+                  <inputColumns>
+                    <inputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].Columns[TerritoryID]" cachedDataType="i4" cachedName="TerritoryID" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[TerritoryID]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[TerritoryID]" />
+                    <inputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].Columns[OrderCount]" cachedDataType="i4" cachedName="OrderCount" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[OrderCount]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[OrderCount]" />
+                    <inputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].Columns[Revenue]" cachedDataType="cy" cachedName="Revenue" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[Revenue]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[Revenue]" />
+                    <inputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].Columns[LoadedAt]" cachedDataType="dbTimeStamp" cachedName="LoadedAt" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[LoadedAt]" lineageId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output].Columns[LoadedAt]" />
+                    <inputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].Columns[YearMonth_vc]" cachedCodepage="1252" cachedDataType="str" cachedLength="10" cachedName="YearMonth_vc" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[YearMonth]" lineageId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Output].Columns[YearMonth_vc]" />
+                  </inputColumns>
+                  <externalMetadataColumns isUsed="True">
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[SummaryID]" dataType="i4" name="SummaryID" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[TerritoryID]" dataType="i4" name="TerritoryID" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[YearMonth]" codePage="1252" dataType="str" length="10" name="YearMonth" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[OrderCount]" dataType="i4" name="OrderCount" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[Revenue]" dataType="numeric" name="Revenue" precision="18" scale="2" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[LoadedAt]" dataType="dbTimeStamp2" name="LoadedAt" scale="7" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[AvgOrderValue]" dataType="numeric" name="AvgOrderValue" precision="29" scale="13" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input].ExternalColumns[TerritoryName]" dataType="wstr" length="50" name="TerritoryName" />
+                  </externalMetadataColumns>
+                </input>
+              </inputs>
+              <outputs>
+                <output refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Outputs[OLE DB Destination Error Output]" exclusionGroup="1" isErrorOut="true" name="OLE DB Destination Error Output" synchronousInputId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Outputs[OLE DB Destination Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Outputs[OLE DB Destination Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Outputs[OLE DB Destination Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Outputs[OLE DB Destination Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+            <component refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month" componentClassID="Microsoft.OLEDBSource" contactInfo="OLE DB Source;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;7" description="OLE DB Source" name="OLE SRC Sales by Territory Month" usesDispositions="true" version="7">
+              <properties>
+                <property dataType="System.Int32" description="The number of seconds before a command times out.  A value of 0 indicates an infinite time-out." name="CommandTimeout">0</property>
+                <property dataType="System.String" description="Specifies the name of the database object used to open a rowset." name="OpenRowset">
+                </property>
+                <property dataType="System.String" description="Specifies the variable that contains the name of the database object used to open a rowset." name="OpenRowsetVariable">
+                </property>
+                <property dataType="System.String" description="The SQL command to be executed." name="SqlCommand" UITypeEditor="Microsoft.DataTransformationServices.Controls.ModalMultilineStringEditor">SELECT TerritoryID, FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, COUNT(*) AS OrderCount, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+GROUP BY TerritoryID, FORMAT(OrderDate, 'yyyy-MM')</property>
+                <property dataType="System.String" description="The variable that contains the SQL command to be executed." name="SqlCommandVariable">
+                </property>
+                <property dataType="System.Int32" description="Specifies the column code page to use when code page information is unavailable from the data source." name="DefaultCodePage">1252</property>
+                <property dataType="System.Boolean" description="Forces the use of the DefaultCodePage property value when describing character data." name="AlwaysUseDefaultCodePage">false</property>
+                <property dataType="System.Int32" description="Specifies the mode used to access the database." name="AccessMode" typeConverter="AccessMode">2</property>
+                <property dataType="System.String" description="The mappings between the parameters in the SQL command and variables." name="ParameterMapping">
+                </property>
+              </properties>
+              <connections>
+                <connection refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Connections[OleDbConnection]" connectionManagerID="Package.ConnectionManagers[SRC_AdventureWorks]" connectionManagerRefId="Package.ConnectionManagers[SRC_AdventureWorks]" description="The OLE DB runtime connection used to access the database." name="OleDbConnection" />
+              </connections>
+              <outputs>
+                <output refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output]" name="OLE DB Source Output">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[TerritoryID]" dataType="i4" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[TerritoryID]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[TerritoryID]" name="TerritoryID" truncationRowDisposition="FailComponent" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[YearMonth]" dataType="wstr" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[YearMonth]" length="4000" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[YearMonth]" name="YearMonth" truncationRowDisposition="FailComponent" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[OrderCount]" dataType="i4" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[OrderCount]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[OrderCount]" name="OrderCount" truncationRowDisposition="FailComponent" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[Revenue]" dataType="cy" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[Revenue]" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].Columns[Revenue]" name="Revenue" truncationRowDisposition="FailComponent" />
+                  </outputColumns>
+                  <externalMetadataColumns isUsed="True">
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[TerritoryID]" dataType="i4" name="TerritoryID" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[YearMonth]" dataType="wstr" length="4000" name="YearMonth" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[OrderCount]" dataType="i4" name="OrderCount" />
+                    <externalMetadataColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output].ExternalColumns[Revenue]" dataType="cy" name="Revenue" />
+                  </externalMetadataColumns>
+                </output>
+                <output refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output]" isErrorOut="true" name="OLE DB Source Error Output">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[TerritoryID]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[TerritoryID]" name="TerritoryID" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[YearMonth]" dataType="wstr" length="4000" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[YearMonth]" name="YearMonth" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[OrderCount]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[OrderCount]" name="OrderCount" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[Revenue]" dataType="cy" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[Revenue]" name="Revenue" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+          </components>
+          <paths>
+            <path refId="Package\DFT Load Sales Summary.Paths[Data Conversion Output]" endId="Package\DFT Load Sales Summary\OLE DST reporting SalesSummary.Inputs[OLE DB Destination Input]" name="Data Conversion Output" startId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Outputs[Data Conversion Output]" />
+            <path refId="Package\DFT Load Sales Summary.Paths[Derived Column Output]" endId="Package\DFT Load Sales Summary\DCV YearMonth to varchar.Inputs[Data Conversion Input]" name="Derived Column Output" startId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Outputs[Derived Column Output]" />
+            <path refId="Package\DFT Load Sales Summary.Paths[OLE DB Source Output]" endId="Package\DFT Load Sales Summary\DER LoadedAt and Source.Inputs[Derived Column Input]" name="OLE DB Source Output" startId="Package\DFT Load Sales Summary\OLE SRC Sales by Territory Month.Outputs[OLE DB Source Output]" />
+          </paths>
+        </pipeline>
+      </DTS:ObjectData>
+    </DTS:Executable>
+  </DTS:Executables>
+</DTS:Executable>

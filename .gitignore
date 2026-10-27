@@ -1,0 +1,5 @@
+ssis/**/bin/
+ssis/**/obj/
+.vs/
+*.user
+*.dtproj.user

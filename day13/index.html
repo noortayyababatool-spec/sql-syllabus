@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 13: First SSIS package · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/" aria-current="page">Day 13</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 13</p>
+  <h1>Day 13: First SSIS package</h1>
+  <p class="meta">Thu 15 October 2026 · 16 steps · built in Visual Studio 2022 SSIS project AWReporting: AdventureWorks2022 to AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> a package that reads from AdventureWorks, transforms, loads into AWPractice, and runs end to end with green boxes. This is the job.</p>
+    <p><strong>Read:</strong> Microsoft Learn, &quot;SSIS Tutorial: Creating a Simple ETL Package&quot;, lessons 1 and 2; the Data Flow Task and OLE DB Source pages.</p>
+  </div>
+  <div class="tip"><strong>What this page shows:</strong> every screenshot is from the real SSIS designer in Visual Studio 2022, with each package run by pressing F5. The project, six packages and the CSV are in <a href="https://github.com/noortayyababatool-spec/sql-syllabus/tree/main/ssis">the ssis folder on GitHub</a>. The page follows the plan's order and shows each error exactly as it appeared, then the fix.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#part-1-and-2-the-project-and-the-data-flow">Part 1 and 2: the project and the data flow</a> <span>4</span></li><li><a href="#part-3-make-it-rerunnable">Part 3: make it rerunnable</a> <span>5</span></li><li><a href="#stretch">Stretch</a> <span>2</span></li><li><a href="#part-4-add-a-file-source">Part 4: add a file source</a> <span>5</span></li></ol></div>
+  <section class="part" id="part-1-and-2-the-project-and-the-data-flow"><h2>Part 1 and 2: the project and the data flow</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>The package as the plan describes it</h3></div>
+        <pre><code class="language-sql">-- OLE SRC Sales by Territory Month (connection SRC_AdventureWorks, SQL command)
+SELECT TerritoryID, FORMAT(OrderDate, 'yyyy-MM') AS YearMonth, COUNT(*) AS OrderCount, SUM(TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader
+GROUP BY TerritoryID, FORMAT(OrderDate, 'yyyy-MM')
+
+-- DER LoadedAt and Source:  LoadedAt = GETDATE()   Source = &quot;SSIS&quot;
+-- OLE DST reporting SalesSummary (connection DST_AWPractice, table [reporting].[SalesSummary])</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Project AWReporting, two OLE DB connection managers (SRC_AdventureWorks and DST_AWPractice), one Data Flow Task, and inside it the three components the plan lists: an OLE DB Source running the summary query, a Derived Column adding LoadedAt and Source, and an OLE DB Destination writing to reporting.SalesSummary. The red X appears before anything runs: SSIS checks every column's data type against the target table when the package is opened (validation).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of query 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: query 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Data Flow tab in Visual Studio 2022: source, Derived Column, destination. The red X on the destination is a validation error.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>The package as the plan describes it <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- F5: run the package</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FORMAT() returns nvarchar, which SSIS calls DT_WSTR (Unicode text). On Day 10 the YearMonth column was changed to VARCHAR(10), which is non-Unicode text (DT_STR). SSIS never converts between the two silently, so the destination fails validation and nothing runs. In SQL the same INSERT works because SQL Server converts implicitly; SSIS is strict about types.</p><p class="pin"><span aria-hidden="true">📍</span> The plan expected this run to go green. It failed first on a data type, the error the plan calls the most common one in SSIS.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of query 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: query 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Package Validation Error: Column &quot;YearMonth&quot; cannot convert between unicode and non-unicode string data types</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>The fix: a Data Conversion transform</h3></div>
+        <pre><code class="language-sql">-- DCV YearMonth to varchar:  YearMonth (DT_WSTR) -&gt; YearMonth_vc (DT_STR, length 10, code page 1252)
+-- Destination mapping:  YearMonth_vc -&gt; YearMonth</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A Data Conversion transform creates a new column with a different data type. Here it turns the Unicode YearMonth into a non-Unicode copy, YearMonth_vc, with code page 1252 (Western European), and the destination maps YearMonth_vc onto the table's YearMonth. This is the plan's second suggested fix; the first, changing the type at the source, would also work, for example with CAST(FORMAT(...) AS varchar(7)) in the query.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of query 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: query 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">The red X is gone once the conversion is in the flow</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>The fix: a Data Conversion transform <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- F5, then in SSMS:
+SELECT COUNT(*) FROM AWPractice.reporting.SalesSummary;   -- 364</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Each component turns yellow while running and green when done, and every arrow shows how many rows passed along it: 364 from source to destination, one per territory per month. SELECT COUNT(*) in SSMS returns 364, matching the arrows, which is the first check after any load.</p><p class="pin"><span aria-hidden="true">📍</span> Green boxes and a row count on every arrow: the Part 2 milestone. The count in SSMS matches the arrows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of query 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: query 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">All green, 364 rows on every arrow; SSMS count 364</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="part-3-make-it-rerunnable"><h2>Part 3: make it rerunnable</h2>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>Run it again. It fails on the UNIQUE constraint.</h3></div>
+        <pre><code class="language-sql">-- Shift+F5 to stop, then F5 a second time</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The second run reads the same 364 rows and tries to insert them again. The table's UNIQUE (TerritoryID, YearMonth) constraint from Day 10 rejects the duplicates. The fast-load batch is all-or-nothing, so nothing is added and the count stays 364: the constraint protected the data exactly as it was built to.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of query 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: query 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Package execution completed with error; the table still holds exactly 364 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>Run it again. It fails on the UNIQUE constraint. <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Progress tab (Execution Results after you stop debugging)</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Progress tab lists every step with its errors, warnings and timings. The first red line is the real cause: an OLE DB error from the destination, which is the UNIQUE key violation. The lines after it (DTS_E_INDUCEDTRANSFORMFAILUREONERROR, DTS_E_PROCESSINPUTFAILED, task failed) are knock-on errors. The line &quot;wrote 364 rows&quot; is misleading: the batch was rolled back, which is why the SSMS count stays 364.</p><p class="pin"><span aria-hidden="true">📍</span> The Progress tab is where you look when a package fails. Read the first red line, not the last.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of query 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: query 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Progress tab: DTS_E_OLEDBERROR on OLE DST reporting SalesSummary, then Task DFT Load Sales Summary failed</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>The fix: an Execute SQL Task that truncates first</h3></div>
+        <pre><code class="language-sql">-- SQL Truncate Target (Execute SQL Task, connection DST_AWPractice)
+TRUNCATE TABLE reporting.SalesSummary;
+-- green arrow (precedence constraint: Success) -&gt; DFT Load Sales Summary</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Control Flow canvas holds tasks and the order they run in. The green arrow is a precedence constraint on Success: the data flow starts only if the truncate succeeded. Emptying the table before loading it is the Day 10 'delete then insert' pattern, now inside the package.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of query 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: query 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Control Flow: SQL Truncate Target, green arrow, DFT Load Sales Summary</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>The fix: an Execute SQL Task that truncates first <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- F5, check the count, Shift+F5, F5 again, check the count again</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>First run: truncate, then load 364 rows. Both tasks green.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of query 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: query 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Run 1: green, 364 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>The fix: an Execute SQL Task that truncates first <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM AWPractice.reporting.SalesSummary;   -- 364 after run 1, 364 after run 2</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Second run: still green, still 364 rows. A scheduled load gets re-run after every failure, every server restart and every manual retry, so this property is what makes it safe to automate.</p><p class="pin"><span aria-hidden="true">📍</span> The package is idempotent: running it twice gives the same result as running it once.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of query 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: query 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Run 2: green again; the count stays 364</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="stretch"><h2>Stretch</h2>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>Lookup the territory name, redirect no-match rows, count the rows</h3></div>
+        <pre><code class="language-sql">-- LKP Territory Name (Lookup, connection DST_AWPractice)
+SELECT TerritoryID, Name AS TerritoryName FROM dbo.Territory
+-- join on TerritoryID, add TerritoryName; no-match rows -&gt; reporting.SalesSummary_Unmatched
+-- CNT Rows Loaded (Row Count) -&gt; package variable User::RowsLoaded
+
+ALTER TABLE reporting.SalesSummary ADD TerritoryName NVARCHAR(50) NULL;
+CREATE TABLE reporting.SalesSummary_Unmatched (TerritoryID INT NULL, YearMonth NVARCHAR(10) NULL,
+    OrderCount INT NULL, Revenue DECIMAL(18,2) NULL, LoadedAt DATETIME2 NOT NULL DEFAULT SYSDATETIME());</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A Lookup works like a LEFT JOIN inside the data flow: for each row it looks up TerritoryID in dbo.Territory and adds the TerritoryName column. Rows with no match would make the whole load fail by default; setting 'redirect rows to no match output' sends them to their own table instead, so bad rows are kept for checking rather than lost or fatal. The Row Count transform counts the rows passing through and stores the total in a package variable.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of query 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: query 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Data Flow: the Lookup splits into Match and No Match outputs</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>Lookup the territory name, redirect no-match rows, count the rows <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*), COUNT(TerritoryName) FROM reporting.SalesSummary;   -- 364, 364
+SELECT COUNT(*) FROM reporting.SalesSummary_Unmatched;               -- 0</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every TerritoryID from AdventureWorks exists in AWPractice.dbo.Territory, so all 364 rows match, all 364 get a TerritoryName and the unmatched table stays empty. RowsLoaded = 364. Territory 1 shows 'Northwest Region', the name the Day 9 MERGE gave it, which proves the lookup reads AWPractice, not AdventureWorks.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of query 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: query 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">All green: Lookup Match Output 364 rows, No Match 0; every loaded row has a TerritoryName</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="part-4-add-a-file-source"><h2>Part 4: add a file source</h2>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>LoadTerritories as the plan describes it: CSV straight into dbo.Territory</h3></div>
+        <pre><code class="language-sql">-- territories.csv: Sales.SalesTerritory exported with column names in the first row, plus
+-- 11,Pakistan,PK,Asia,0,0,0,0,&lt;new GUID&gt;,&lt;today&gt;
+-- Flat File Source (TerritoryID DT_I4, money columns DT_CY, rowguid DT_GUID, ModifiedDate DT_DBTIMESTAMP)
+--   -&gt; OLE DB Destination [dbo].[Territory] (keep identity)</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A Flat File connection manager describes the CSV: delimiter, header row, and the data type of each column, set on its Advanced tab. TerritoryID is DT_I4 (4-byte integer) as the plan says, rather than text. The warning on the destination is about CountryRegionCode: a 50-character file column going into a 3-character table column could be cut short.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of query 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: query 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Data Flow: Flat File Source to OLE DB Destination</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>LoadTerritories as the plan describes it: CSV straight into dbo.Territory <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- F5</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The run fails on the very first component, the file source, before any row reaches the database. 'OLE DST dbo Territory wrote 0 rows'.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of query 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: query 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Package execution completed with error: the Flat File Source failed</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>LoadTerritories as the plan describes it: CSV straight into dbo.Territory <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">-- Progress tab</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The rowguid column was set to DT_GUID, but in a text file a GUID is plain text without the {curly braces} that SSIS expects when parsing one, so every row fails conversion at row 2. The fix the plan gives is to change the type on the Flat File connection's Advanced tab: rowguid becomes DT_WSTR (text), 50 characters.</p><p class="pin"><span aria-hidden="true">📍</span> Exactly the data-type failure the plan predicts. The cause is the GUID format, not the TerritoryID.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of query 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: query 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Data conversion failed. The data conversion for column &quot;rowguid&quot; returned status value 2: The value could not be converted because of a potential loss of data.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>The working version: stage, then MERGE</h3></div>
+        <pre><code class="language-sql">-- SQL Truncate Staging
+TRUNCATE TABLE dbo.TerritoryStaging;
+-- DFT Load Territories: territories.csv (rowguid now DT_WSTR) -&gt; dbo.TerritoryStaging
+-- SQL Merge into Territory
+SET IDENTITY_INSERT dbo.Territory ON;
+MERGE dbo.Territory AS target
+USING dbo.TerritoryStaging AS source ON target.TerritoryID = source.TerritoryID
+WHEN MATCHED THEN UPDATE SET target.Name = source.Name, target.CountryRegionCode = source.CountryRegionCode, target.[Group] = source.[Group]
+WHEN NOT MATCHED THEN INSERT (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear, CostYTD, CostLastYear, rowguid, ModifiedDate)
+     VALUES (source.TerritoryID, source.Name, source.CountryRegionCode, source.[Group], 0, 0, 0, 0, NEWID(), GETDATE());
+SET IDENTITY_INSERT dbo.Territory OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Fixing the type is not enough for the plan's version: AWPractice.dbo.Territory already holds territories 1 to 11 from Day 9 with a primary key since Day 10, so loading the same IDs again would fail on the key, and even the first run would only work once. The standard pattern for files is to land them in a staging table, then MERGE into the real table (Day 9): matched rows are updated, new rows inserted. The package runs truncate staging, load file, merge, in that order, joined by green Success arrows.</p><p class="pin"><span aria-hidden="true">📍</span> Inserting straight into dbo.Territory could never be re-run: territories 1 to 11 already exist and the primary key from Day 10 would reject them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of query 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: query 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Control Flow: SQL Truncate Staging, DFT Load Territories, SQL Merge into Territory</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>The working version: stage, then MERGE <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) FROM dbo.TerritoryStaging;          -- 11
+SELECT TerritoryID, Name FROM dbo.Territory;         -- 1 is 'Northwest' again; 11 Pakistan; 14 Bangladesh kept</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>All three tasks are green. The 11 file rows landed in staging, and the MERGE updated territories 1 to 11: territory 1 is 'Northwest' again (the file's name replaces the Day 9 'Northwest Region'), Pakistan is confirmed as territory 11, and Bangladesh (14), which is not in the file, is left untouched because the MERGE has no WHEN NOT MATCHED BY SOURCE clause. The package can be run any number of times.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of query 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: query 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">All three tasks green: 11 rows staged and merged into dbo.Territory</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Error log</h2><div class="tablewrap"><table class="map"><thead><tr><th>Error</th><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>Column "YearMonth" cannot convert between unicode and non-unicode string data types</td><td>FORMAT() returns nvarchar (DT_WSTR); the table column is varchar (DT_STR)</td><td>Data Conversion transform to DT_STR, code page 1252</td></tr><tr><td>DTS_E_OLEDBERROR on the destination when re-run</td><td>UNIQUE (TerritoryID, YearMonth) rejects a second copy of the same rows</td><td>Execute SQL Task: TRUNCATE before the data flow</td></tr><tr><td>Data conversion failed for column "rowguid": potential loss of data</td><td>A GUID in a CSV has no {braces}, so it can't be parsed as DT_GUID</td><td>Flat File connection Advanced tab: rowguid as DT_WSTR 50</td></tr><tr><td>(would follow) primary key violation on dbo.Territory</td><td>Territories 1 to 11 already exist</td><td>Load into a staging table, then MERGE</td></tr><tr><td>To run a SSIS package outside of SQL Server Data Tools you must install Standard Edition of Integration Services</td><td>SQL Server Express has no SSIS service</td><td>Run with F5 in Visual Studio; production needs Standard edition</td></tr></tbody></table></div><h2>Self-test</h2><div class="tip"><strong>The four things every package had:</strong> a connection manager, a source, a transform, a destination.<br><strong>Why the first rerun failed:</strong> the UNIQUE key on (TerritoryID, YearMonth) rejected rows that were already there; fixed by truncating first, so the package is idempotent.<br><strong>Where to look when a package fails:</strong> the Progress tab (Execution Results after you stop debugging), first red line.<br><strong>Data Conversion transform:</strong> makes a copy of a column with a different SSIS data type, most often Unicode to non-Unicode text.<br><strong>Green arrow between Control Flow tasks:</strong> a precedence constraint on Success; the next task runs only if the previous one succeeded.</div><div class="tip"><strong>Not done on this PC:</strong> deploying to SSISDB and running from the catalog needs Integration Services on a paid SQL Server edition, and the Script Task stretch needs the designer's script editor. Replacing the data flow with <code>EXEC reporting.usp_LoadSalesSummary</code> is a one-line Execute SQL Task; a procedure is the better choice when source and target are on the same server, while a data flow earns its place across servers or with files.</div>
+  <nav class="pager"><a href="../day12/">← Day 12: Indexes and execution plans</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

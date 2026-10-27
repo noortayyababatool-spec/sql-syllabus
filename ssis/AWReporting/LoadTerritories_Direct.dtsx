@@ -1,0 +1,198 @@
+<?xml version="1.0"?>
+<DTS:Executable xmlns:DTS="www.microsoft.com/SqlServer/Dts" DTS:refId="Package" DTS:CreationDate="10/27/2026 11:08:24 PM" DTS:CreationName="Microsoft.Package" DTS:CreatorComputerName="NOOR-TAYYABA" DTS:CreatorName="NOOR-TAYYABA\muhammad" DTS:Description="Day 13: load territories from a CSV file into AWPractice.dbo.Territory" DTS:DTSID="{45353C7E-36D9-490C-94C6-E684D65F4644}" DTS:ExecutableType="Microsoft.Package" DTS:LastModifiedProductVersion="17.0.1000.7" DTS:LocaleID="1033" DTS:ObjectName="LoadTerritories_Direct" DTS:VersionGUID="{AF711945-9ADB-46CF-9D62-CC72D8B1EC66}">
+  <DTS:Property DTS:Name="PackageFormatVersion">8</DTS:Property>
+  <DTS:ConnectionManagers>
+    <DTS:ConnectionManager DTS:refId="Package.ConnectionManagers[DST_AWPractice]" DTS:CreationName="OLEDB" DTS:DTSID="{FAE953C3-086B-44F7-A12B-A278F2AB1D8A}" DTS:ObjectName="DST_AWPractice">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager DTS:ConnectRetryCount="1" DTS:ConnectRetryInterval="5" DTS:ConnectionString="Data Source=localhost\SQLEXPRESS;Initial Catalog=AWPractice;Provider=MSOLEDBSQL19;Integrated Security=SSPI;Use Encryption for Data=Optional;Application Name=SSIS-AWReporting;" />
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+    <DTS:ConnectionManager DTS:refId="Package.ConnectionManagers[FF_Territories_csv]" DTS:CreationName="FLATFILE" DTS:DTSID="{38791AAF-BCEC-4482-85E5-2BBECB0BDE3F}" DTS:ObjectName="FF_Territories_csv">
+      <DTS:ObjectData>
+        <DTS:ConnectionManager DTS:Format="Delimited" DTS:LocaleID="1033" DTS:HeaderRowDelimiter="_x000D__x000A_" DTS:ColumnNamesInFirstDataRow="True" DTS:RowDelimiter="" DTS:TextQualifier="" DTS:CodePage="1252" DTS:ConnectionString="C:\Users\muhammad\OneDrive\Pictures\Documents\Desktop\Installation\sql-syllabus\ssis\territories.csv">
+          <DTS:FlatFileColumns>
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="3" DTS:ObjectName="TerritoryID" DTS:DTSID="{E14FF190-7D06-4030-A163-CC03F27B567D}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:ColumnWidth="50" DTS:MaximumWidth="50" DTS:DataType="130" DTS:ObjectName="Name" DTS:DTSID="{168423CC-57C0-41C9-9602-4399169BFE78}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:ColumnWidth="50" DTS:MaximumWidth="50" DTS:DataType="130" DTS:ObjectName="CountryRegionCode" DTS:DTSID="{240D4D11-7B55-4921-9E41-EBC2E0D978BA}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:ColumnWidth="50" DTS:MaximumWidth="50" DTS:DataType="130" DTS:ObjectName="Group" DTS:DTSID="{DB0A7FDA-F2EB-448A-984A-D772E2FD9B4A}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="6" DTS:ObjectName="SalesYTD" DTS:DTSID="{AF1110E3-8810-4ED0-A088-736E849AA78F}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="6" DTS:ObjectName="SalesLastYear" DTS:DTSID="{D1566C35-FC67-4432-AA41-7C04DD0F6859}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="6" DTS:ObjectName="CostYTD" DTS:DTSID="{51E3DEF8-9F55-4916-B83D-7A409F507AAB}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="6" DTS:ObjectName="CostLastYear" DTS:DTSID="{B42567DF-F4FC-40D3-A289-80136527F8D3}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x002C_" DTS:DataType="72" DTS:ObjectName="rowguid" DTS:DTSID="{5D1AAFFE-3DBB-45CA-862C-6C9FB181E63A}" DTS:CreationName="" />
+            <DTS:FlatFileColumn DTS:ColumnType="Delimited" DTS:ColumnDelimiter="_x000D__x000A_" DTS:DataType="135" DTS:ObjectName="ModifiedDate" DTS:DTSID="{B332461C-C722-426B-898E-F539CA55F1EC}" DTS:CreationName="" />
+          </DTS:FlatFileColumns>
+        </DTS:ConnectionManager>
+      </DTS:ObjectData>
+    </DTS:ConnectionManager>
+  </DTS:ConnectionManagers>
+  <DTS:Variables />
+  <DTS:Executables>
+    <DTS:Executable DTS:refId="Package\DFT Load Territories" DTS:CreationName="Microsoft.Pipeline" DTS:DTSID="{9AF68E52-736C-4BE2-BC6E-A15E8038B82E}" DTS:ExecutableType="Microsoft.Pipeline" DTS:LocaleID="-1" DTS:ObjectName="DFT Load Territories" DTS:TaskContact="Performs high-performance data extraction, transformation and loading;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved;http://www.microsoft.com/sql/support/default.asp;1">
+      <DTS:Variables />
+      <DTS:ObjectData>
+        <pipeline version="1">
+          <components>
+            <component refId="Package\DFT Load Territories\FF SRC territories csv" componentClassID="Microsoft.FlatFileSource" contactInfo="Flat File Source;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;1" description="Flat File Source" localeId="1033" name="FF SRC territories csv" usesDispositions="true" version="1">
+              <properties>
+                <property dataType="System.Boolean" description="Specifies whether zero-length columns are treated as null." name="RetainNulls">false</property>
+                <property dataType="System.String" description="Specifies the name of an output column containing the file name. If no name is specified, no output column containing the file name will be generated." name="FileNameColumnName">
+                </property>
+              </properties>
+              <connections>
+                <connection refId="Package\DFT Load Territories\FF SRC territories csv.Connections[FlatFileConnection]" connectionManagerID="Package.ConnectionManagers[FF_Territories_csv]" connectionManagerRefId="Package.ConnectionManagers[FF_Territories_csv]" name="FlatFileConnection" />
+              </connections>
+              <outputs>
+                <output refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output]" name="Flat File Source Output">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[TerritoryID]" dataType="i4" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[TerritoryID]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[TerritoryID]" name="TerritoryID" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Name]" dataType="wstr" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[Name]" length="50" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Name]" name="Name" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CountryRegionCode]" dataType="wstr" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CountryRegionCode]" length="50" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CountryRegionCode]" name="CountryRegionCode" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Group]" dataType="wstr" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[Group]" length="50" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Group]" name="Group" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesYTD]" dataType="cy" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[SalesYTD]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesYTD]" name="SalesYTD" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesLastYear]" dataType="cy" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[SalesLastYear]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesLastYear]" name="SalesLastYear" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostYTD]" dataType="cy" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CostYTD]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostYTD]" name="CostYTD" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostLastYear]" dataType="cy" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CostLastYear]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostLastYear]" name="CostLastYear" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[rowguid]" dataType="guid" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[rowguid]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[rowguid]" name="rowguid" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[ModifiedDate]" dataType="dbTimeStamp" errorOrTruncationOperation="Conversion" errorRowDisposition="FailComponent" externalMetadataColumnId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[ModifiedDate]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[ModifiedDate]" name="ModifiedDate" truncationRowDisposition="FailComponent">
+                      <properties>
+                        <property dataType="System.Boolean" description="Indicates whether the column uses the faster, locale-neutral parsing routines." name="FastParse">false</property>
+                        <property dataType="System.Boolean" description="Indicates whether the data is in binary format." name="UseBinaryFormat">false</property>
+                      </properties>
+                    </outputColumn>
+                  </outputColumns>
+                  <externalMetadataColumns isUsed="True">
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[TerritoryID]" dataType="i4" name="TerritoryID" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[Name]" dataType="wstr" length="50" name="Name" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CountryRegionCode]" dataType="wstr" length="50" name="CountryRegionCode" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[Group]" dataType="wstr" length="50" name="Group" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[SalesYTD]" dataType="cy" name="SalesYTD" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[SalesLastYear]" dataType="cy" name="SalesLastYear" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CostYTD]" dataType="cy" name="CostYTD" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[CostLastYear]" dataType="cy" name="CostLastYear" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[rowguid]" dataType="guid" name="rowguid" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].ExternalColumns[ModifiedDate]" dataType="dbTimeStamp" name="ModifiedDate" />
+                  </externalMetadataColumns>
+                </output>
+                <output refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output]" isErrorOut="true" name="Flat File Source Error Output">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[Flat File Source Error Output Column]" codePage="1252" dataType="text" description="Flat File Source Error Output Column" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[Flat File Source Error Output Column]" name="Flat File Source Error Output Column" />
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+            <component refId="Package\DFT Load Territories\OLE DST dbo Territory" componentClassID="Microsoft.OLEDBDestination" contactInfo="OLE DB Destination;Microsoft Corporation; Microsoft SQL Server; (C) Microsoft Corporation; All Rights Reserved; http://www.microsoft.com/sql/support;4" description="OLE DB Destination" name="OLE DST dbo Territory" usesDispositions="true" version="4">
+              <properties>
+                <property dataType="System.Int32" description="The number of seconds before a command times out.  A value of 0 indicates an infinite time-out." name="CommandTimeout">0</property>
+                <property dataType="System.String" description="Specifies the name of the database object used to open a rowset." name="OpenRowset">[dbo].[Territory]</property>
+                <property dataType="System.String" description="Specifies the variable that contains the name of the database object used to open a rowset." name="OpenRowsetVariable">
+                </property>
+                <property dataType="System.String" description="The SQL command to be executed." name="SqlCommand" UITypeEditor="Microsoft.DataTransformationServices.Controls.ModalMultilineStringEditor">
+                </property>
+                <property dataType="System.Int32" description="Specifies the column code page to use when code page information is unavailable from the data source." name="DefaultCodePage">1252</property>
+                <property dataType="System.Boolean" description="Forces the use of the DefaultCodePage property value when describing character data." name="AlwaysUseDefaultCodePage">false</property>
+                <property dataType="System.Int32" description="Specifies the mode used to access the database." name="AccessMode" typeConverter="AccessMode">3</property>
+                <property dataType="System.Boolean" description="Indicates whether the values supplied for identity columns will be copied to the destination. If false, values for identity columns will be auto-generated at the destination. Applies only if fast load is turned on." name="FastLoadKeepIdentity">true</property>
+                <property dataType="System.Boolean" description="Indicates whether the columns containing null will have null inserted in the destination. If false, columns containing null will have their default values inserted at the destination. Applies only if fast load is turned on." name="FastLoadKeepNulls">false</property>
+                <property dataType="System.String" description="Specifies options to be used with fast load.  Applies only if fast load is turned on." name="FastLoadOptions">
+                </property>
+                <property dataType="System.Int32" description="Specifies when commits are issued during data insertion.  A value of 0 specifies that one commit will be issued at the end of data insertion.  Applies only if fast load is turned on." name="FastLoadMaxInsertCommitSize">2147483647</property>
+              </properties>
+              <connections>
+                <connection refId="Package\DFT Load Territories\OLE DST dbo Territory.Connections[OleDbConnection]" connectionManagerID="Package.ConnectionManagers[DST_AWPractice]" connectionManagerRefId="Package.ConnectionManagers[DST_AWPractice]" description="The OLE DB runtime connection used to access the database." name="OleDbConnection" />
+              </connections>
+              <inputs>
+                <input refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input]" errorOrTruncationOperation="Insert" errorRowDisposition="FailComponent" hasSideEffects="true" name="OLE DB Destination Input">
+                  <inputColumns>
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[TerritoryID]" cachedDataType="i4" cachedName="TerritoryID" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[TerritoryID]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[TerritoryID]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[Name]" cachedDataType="wstr" cachedLength="50" cachedName="Name" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[Name]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Name]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[CountryRegionCode]" cachedDataType="wstr" cachedLength="50" cachedName="CountryRegionCode" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CountryRegionCode]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CountryRegionCode]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[Group]" cachedDataType="wstr" cachedLength="50" cachedName="Group" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[Group]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[Group]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[SalesYTD]" cachedDataType="cy" cachedName="SalesYTD" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[SalesYTD]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesYTD]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[SalesLastYear]" cachedDataType="cy" cachedName="SalesLastYear" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[SalesLastYear]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[SalesLastYear]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[CostYTD]" cachedDataType="cy" cachedName="CostYTD" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CostYTD]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostYTD]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[CostLastYear]" cachedDataType="cy" cachedName="CostLastYear" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CostLastYear]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[CostLastYear]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[rowguid]" cachedDataType="guid" cachedName="rowguid" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[rowguid]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[rowguid]" />
+                    <inputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].Columns[ModifiedDate]" cachedDataType="dbTimeStamp" cachedName="ModifiedDate" externalMetadataColumnId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[ModifiedDate]" lineageId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output].Columns[ModifiedDate]" />
+                  </inputColumns>
+                  <externalMetadataColumns isUsed="True">
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[TerritoryID]" dataType="i4" name="TerritoryID" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[Name]" dataType="wstr" length="50" name="Name" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CountryRegionCode]" dataType="wstr" length="3" name="CountryRegionCode" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[Group]" dataType="wstr" length="50" name="Group" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[SalesYTD]" dataType="cy" name="SalesYTD" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[SalesLastYear]" dataType="cy" name="SalesLastYear" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CostYTD]" dataType="cy" name="CostYTD" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[CostLastYear]" dataType="cy" name="CostLastYear" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[rowguid]" dataType="guid" name="rowguid" />
+                    <externalMetadataColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input].ExternalColumns[ModifiedDate]" dataType="dbTimeStamp" name="ModifiedDate" />
+                  </externalMetadataColumns>
+                </input>
+              </inputs>
+              <outputs>
+                <output refId="Package\DFT Load Territories\OLE DST dbo Territory.Outputs[OLE DB Destination Error Output]" exclusionGroup="1" isErrorOut="true" name="OLE DB Destination Error Output" synchronousInputId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input]">
+                  <outputColumns>
+                    <outputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Outputs[OLE DB Destination Error Output].Columns[ErrorCode]" dataType="i4" lineageId="Package\DFT Load Territories\OLE DST dbo Territory.Outputs[OLE DB Destination Error Output].Columns[ErrorCode]" name="ErrorCode" specialFlags="1" />
+                    <outputColumn refId="Package\DFT Load Territories\OLE DST dbo Territory.Outputs[OLE DB Destination Error Output].Columns[ErrorColumn]" dataType="i4" lineageId="Package\DFT Load Territories\OLE DST dbo Territory.Outputs[OLE DB Destination Error Output].Columns[ErrorColumn]" name="ErrorColumn" specialFlags="2" />
+                  </outputColumns>
+                  <externalMetadataColumns />
+                </output>
+              </outputs>
+            </component>
+          </components>
+          <paths>
+            <path refId="Package\DFT Load Territories.Paths[Flat File Source Output]" endId="Package\DFT Load Territories\OLE DST dbo Territory.Inputs[OLE DB Destination Input]" name="Flat File Source Output" startId="Package\DFT Load Territories\FF SRC territories csv.Outputs[Flat File Source Output]" />
+          </paths>
+        </pipeline>
+      </DTS:ObjectData>
+    </DTS:Executable>
+  </DTS:Executables>
+</DTS:Executable>

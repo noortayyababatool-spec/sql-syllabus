@@ -25,6 +25,7 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 | [10](day10/) | Tables, constraints, views, temp tables | CREATE TABLE with PRIMARY KEY, UNIQUE, CHECK, DEFAULT and NOT NULL; breaking each constraint; foreign keys; ALTER TABLE on constrained columns; re-runnable loads; views; #temp, ##global and @table variables; computed columns; schemas; CREATE OR ALTER | 22 |
 | [11](day11/) | Stored procedures, functions, control flow | Variables, IF/WHILE, procedures with default and OUTPUT parameters, a re-runnable load procedure, scalar and inline table-valued functions, TRY/CATCH with transactions, dynamic SQL, cursors, the cost of scalar functions | 19 |
 | [12](day12/) | Indexes and execution plans | Heaps vs clustered indexes, nonclustered indexes and key lookups, covering indexes, why functions and leading wildcards prevent seeks, index write cost, missing-index hints, join operators, logical reads before and after | 32 |
+| [13](day13/) | First SSIS package | The [AWReporting](ssis/AWReporting/) Visual Studio project: OLE DB source, Derived Column, Data Conversion, OLE DB destination, truncate-then-load for re-runs, Lookup with no-match redirect, Row Count, a CSV loaded through a staging table and MERGE, and an error log of every failure | 16 steps |
 
 ## Findings worth knowing about AdventureWorks2022
 
