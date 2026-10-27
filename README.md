@@ -26,6 +26,19 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 | [11](day11/) | Stored procedures, functions, control flow | Variables, IF/WHILE, procedures with default and OUTPUT parameters, a re-runnable load procedure, scalar and inline table-valued functions, TRY/CATCH with transactions, dynamic SQL, cursors, the cost of scalar functions | 19 |
 | [12](day12/) | Indexes and execution plans | Heaps vs clustered indexes, nonclustered indexes and key lookups, covering indexes, why functions and leading wildcards prevent seeks, index write cost, missing-index hints, join operators, logical reads before and after | 32 |
 | [13](day13/) | First SSIS package | The [AWReporting](ssis/AWReporting/) Visual Studio project: OLE DB source, Derived Column, Data Conversion, OLE DB destination, truncate-then-load for re-runs, Lookup with no-match redirect, Row Count, a CSV loaded through a staging table and MERGE, and an error log of every failure | 16 steps |
+| [14](day14/) | Power BI, the full chain, week 2 assessment | A one-page [Power BI report](pbi/) on the table the SSIS package loads (relationship, Date column, Avg Order Value DAX measure, slicer), proof that truncate → refresh → run package → refresh brings the report back, then 10 SQL tasks and 5 short answers | 23 steps |
+
+## The chain: SQL Server → SSIS → Power BI
+
+The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx) summarises `Sales.SalesOrderHeader` from AdventureWorks2022 by territory and month and loads it into `reporting.SalesSummary` in the AWPractice database. The Power BI report [SalesSummary.pbix](pbi/SalesSummary.pbix) imports that table.
+
+**SSIS data flow** (Visual Studio 2022, a successful run with 364 rows on every arrow):
+
+![SSIS data flow: OLE DB source, Derived Column, Data Conversion and OLE DB destination, all green](day13/shots/q_4.png)
+
+**Power BI report** (123.22M revenue from 31,465 orders):
+
+![Power BI report: revenue and average order cards, revenue by month, revenue by territory, monthly table, territory slicer](day14/shots/q_5.png)
 
 ## Findings worth knowing about AdventureWorks2022
 
@@ -38,6 +51,8 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 ```
 index.html        home page
 dayN/index.html   one page per day: query, explanation, screenshot
-dayN/shots/       SSMS screenshots
+dayN/shots/       screenshots (SSMS, Visual Studio, Power BI)
+ssis/AWReporting/ SSIS project: Visual Studio solution and .dtsx packages
+pbi/              Power BI report (.pbix)
 assets/           stylesheet and script
 ```

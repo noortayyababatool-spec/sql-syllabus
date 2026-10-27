@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 14: Power BI on your table, then assessment · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/" aria-current="page">Day 14</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 2 · Reporting SQL</a> / Day 14</p>
+  <h1>Day 14: Power BI on your table, then assessment</h1>
+  <p class="meta">Fri 16 October 2026 · 23 steps · run on Power BI Desktop and SSMS on AWPractice; SSIS in Visual Studio 2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> a one-page report built on the table your package loads, so the whole chain is yours: source, pipeline, target, report.</p>
+    <p><strong>Built with:</strong> Power BI Desktop (Import mode), the AWReporting SSIS project in Visual Studio 2022, and SSMS 22.</p>
+  </div>
+  <div class="tip"><strong>What this page shows:</strong> Part 1 builds the Power BI report on reporting.SalesSummary, Part 2 empties the table, reloads it with the Day 13 SSIS package and shows the report follow, and Part 3 is the week 2 assessment: 10 SQL tasks run in SSMS, then five short answers at the end of the page.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#part-1-the-power-bi-report">Part 1: the Power BI report</a> <span>6</span></li><li><a href="#part-2-prove-the-chain">Part 2: prove the chain</a> <span>4</span></li><li><a href="#part-3-week-2-assessment-sql">Part 3: week 2 assessment, SQL</a> <span>13</span></li></ol></div>
+  <section class="part" id="part-1-the-power-bi-report"><h2>Part 1: the Power BI report</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Get Data &gt; SQL Server, Import mode, two tables</h3></div>
+        <pre><code class="language-sql">-- Power BI Desktop &gt; Home &gt; SQL Server
+-- Server: localhost\SQLEXPRESS    Database: AWPractice    Data connectivity mode: Import
+-- Navigator: tick reporting.SalesSummary and Territory, then Load</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>Import copies the rows into the Power BI file, so visuals are fast, but the report only changes when it is refreshed. The plan says server localhost; on this PC SQL Server Express is a named instance, so the server is localhost\SQLEXPRESS. Two prompts came up on the way: Windows credentials (use my current credentials) and an Encryption Support warning, because this Express instance has no trusted certificate. OK connects without encryption, which is fine for a database on the same PC.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="Screenshot: step 1 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Navigator with reporting.SalesSummary and Territory ticked</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>Model view: the relationship on TerritoryID</h3></div>
+        <pre><code class="language-sql">-- Model view: Territory (1) to reporting SalesSummary (*) on TerritoryID
+-- Cardinality: Many to one (*:1)    Cross-filter direction: Single</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>Power BI created the relationship by itself on Load, because both tables have a TerritoryID column. Many to one: many SalesSummary rows (one per territory per month) point to one Territory row. Single cross-filter means filters flow from Territory to SalesSummary, which is what lets a Territory Name slicer filter revenue.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="Screenshot: step 2 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Relationship found automatically: Many to one on TerritoryID</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>A Date column from YearMonth</h3></div>
+        <pre><code class="language-sql">Date = DATE(VALUE(LEFT('reporting SalesSummary'[YearMonth], 4)), VALUE(MID('reporting SalesSummary'[YearMonth], 6, 2)), 1)
+-- Data type: Date    Format: Mmm yyyy</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>YearMonth is text such as 2012-05, and a line chart needs a real date to space the months correctly. The formula takes the year and month out of the text and builds the first day of that month. Power Query is usually the better place for this kind of shaping, because then the model only holds finished columns; for one column on a small table both work.</p><p class="pin"><span aria-hidden="true">📍</span> The plan builds this column in Power Query: Date.FromText([YearMonth] &amp; &quot;-01&quot;). I wrote it as a DAX calculated column instead. The result is the same column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="Screenshot: step 3 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Calculated column Date: data type Date, format Mmm yyyy</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>The DAX measure: Avg Order Value</h3></div>
+        <pre><code class="language-sql">Avg Order Value = DIVIDE(SUM('reporting SalesSummary'[Revenue]), SUM('reporting SalesSummary'[OrderCount]))
+Total Revenue = SUM('reporting SalesSummary'[Revenue])</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>A measure is worked out when a visual asks for it, for whatever that visual is filtered to: 3,916 for all territories, a different number for Canada alone. DIVIDE returns blank instead of an error if the order count is 0. It divides the sums, rather than averaging the stored AvgOrderValue column, because an average of monthly averages gives a small month the same weight as a big one. Total Revenue is a second measure so the card has a clear name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="Screenshot: step 4 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Measure Avg Order Value in the formula bar</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>The one-page report</h3></div>
+        <pre><code class="language-sql">-- Card: Total Revenue          -- Card: Avg Order Value
+-- Line chart: Date (axis), Total Revenue
+-- Bar chart: Territory Name, Total Revenue, sorted descending
+-- Table: YearMonth, OrderCount, Revenue (currency)
+-- Slicer: Territory Name</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>Total revenue is $123,216,784.28 from 31,465 orders, the same totals SQL gives for SalesOrderHeader, so nothing was lost on the way through SSIS. Southwest is the largest territory at about $27M. The line chart first showed one point per year, because Power BI puts a date on the axis as a Year &gt; Quarter &gt; Month &gt; Day hierarchy; switching the field from Date Hierarchy to Date shows every month. Pakistan, Bangladesh and Sri Lanka, the practice territories added earlier, are in the slicer but have no sales, so they do not appear in the bar chart.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="Screenshot: step 5 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Revenue 123.22M, average order 3.92K, 31,465 orders</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>The slicer filters every visual</h3></div>
+        <pre><code class="language-sql">-- Slicer: tick Canada</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>One click filters both cards, the line, the bar and the table. Each visual reads SalesSummary, and the relationship carries the Territory filter across to it. Canada's average order (4.52K) is higher than the overall 3.92K.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="Screenshot: step 6 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Filtered to Canada: $18.40M revenue, 4,067 orders, 4.52K average order</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="part-2-prove-the-chain"><h2>Part 2: prove the chain</h2>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>Empty the table in SSMS</h3></div>
+        <pre><code class="language-sql">-- Day 14 Part 2: empty the reporting table
+TRUNCATE TABLE AWPractice.reporting.SalesSummary;
+SELECT COUNT(*) AS RowsInSalesSummary FROM AWPractice.reporting.SalesSummary;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Remove every row from the table the package loads and the report reads.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows left in reporting.SalesSummary</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>Refresh Power BI: the visuals go empty</h3></div>
+        <pre><code class="language-sql">-- Power BI: Home &gt; Refresh</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>In Import mode the report only changes on refresh. Refresh re-ran the import query, got no rows, and every visual went blank. The slicer still lists territories because it reads the Territory table, which was not touched.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="Screenshot: step 8 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Cards show --, the charts and table are empty</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>Run the SSIS package from Visual Studio</h3></div>
+        <pre><code class="language-sql">-- Visual Studio: LoadSalesSummary.dtsx, F5
+-- SQL Truncate Target  -&gt;  DFT Load Sales Summary</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>The package truncates the table (already empty, so harmless) and reloads it from AdventureWorks2022: 364 rows, one per territory per month.</p><p class="pin"><span aria-hidden="true">📍</span> On the first try the data flow sat on its yellow wheel with no error. sys.dm_exec_requests showed the source query waiting on RESOURCE_SEMAPHORE, a memory grant: with Power BI, Visual Studio and SSMS all open the PC had about 500 MB free, and SQL Server had cut its query memory to 9 MB. Setting min server memory to 1024 MB for the run let the query through; the setting was put back to 0 afterwards.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="Screenshot: step 9 and its result"></button>
+          <figcaption>Screenshot in Visual Studio 2022: <span class="res">Both tasks green: Package execution completed with success</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>Refresh Power BI: the visuals come back</h3></div>
+        <pre><code class="language-sql">-- Power BI: Home &gt; Refresh</code></pre>
+        <div class="explain"><h4>What this step does</h4><p>Same numbers as before the truncate, so the whole chain works: source database, SSIS package, reporting table, Power BI report. At work SQL Agent runs the package on a schedule and the Power BI service refreshes the dataset after it; here F5 and the Refresh button did those two jobs.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="Screenshot: step 10 and its result"></button>
+          <figcaption>Screenshot in Power BI Desktop: <span class="res">Back to 123.22M revenue, 3.92K average order, 31,465 orders</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="part-3-week-2-assessment-sql"><h2>Part 3: week 2 assessment, SQL</h2>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>Q1. Rank territories by 2013 revenue with DENSE_RANK</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+SELECT t.Name AS Territory, SUM(h.TotalDue) AS Revenue2013,
+       DENSE_RANK() OVER (ORDER BY SUM(h.TotalDue) DESC) AS RevenueRank
+FROM SalesOrderHeader h
+JOIN Territory t ON h.TerritoryID = t.TerritoryID
+WHERE h.OrderDate &gt;= '2013-01-01' AND h.OrderDate &lt; '2014-01-01'
+GROUP BY t.Name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Group 2013 orders by territory, then DENSE_RANK over the grouped totals (Day 8, drill 8 shape: a window function can use an aggregate because it runs after GROUP BY). The date filter is a range, not YEAR(), so it could use an index on OrderDate (Day 12). Southwest ranks 1.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>Q2. Each customer's order count and days between first and last order, window functions, no self-join</h3></div>
+        <pre><code class="language-sql">SELECT DISTINCT CustomerID,
+       COUNT(*) OVER (PARTITION BY CustomerID) AS Orders,
+       DATEDIFF(day, MIN(OrderDate) OVER (PARTITION BY CustomerID),
+                     MAX(OrderDate) OVER (PARTITION BY CustomerID)) AS DaysFirstToLast
+FROM SalesOrderHeader
+ORDER BY Orders DESC, CustomerID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>COUNT, MIN and MAX with OVER (PARTITION BY CustomerID) put each customer's totals on every one of their orders without collapsing the rows; DISTINCT then keeps one row per customer. A plain GROUP BY would give the same answer more cheaply, but the question asks for window functions. 19,119 customers.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">19,119 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>Q3. Three-month moving average of monthly revenue</h3></div>
+        <pre><code class="language-sql">WITH Monthly AS (
+    SELECT CONVERT(char(7), OrderDate, 120) AS YearMonth, SUM(TotalDue) AS Revenue
+    FROM SalesOrderHeader GROUP BY CONVERT(char(7), OrderDate, 120)
+)
+SELECT YearMonth, Revenue,
+       AVG(Revenue) OVER (ORDER BY YearMonth ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS MovingAvg3
+FROM Monthly ORDER BY YearMonth;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Monthly totals in a CTE, then AVG over a sliding frame of this row and the two before it (Day 8 stretch). CONVERT(char(7), ..., 120) gives a short 'yyyy-mm' label, which avoids the FORMAT/RANGE error from Day 8 drill 5 and is faster. 38 months.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">38 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>Q4. Inside a transaction, raise all Bike prices 5 percent, show the OUTPUT, roll back</h3></div>
+        <pre><code class="language-sql">BEGIN TRANSACTION;
+UPDATE p SET p.ListPrice = p.ListPrice * 1.05
+OUTPUT inserted.ProductID, inserted.Name, deleted.ListPrice AS OldPrice, inserted.ListPrice AS NewPrice
+FROM Product p
+JOIN AdventureWorks2022.Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+WHERE s.ProductCategoryID = 1;   -- 1 = Bikes
+ROLLBACK TRANSACTION;
+SELECT COUNT(*) AS BikesStillAtOldPrice FROM Product p
+JOIN AdventureWorks2022.Production.ProductSubcategory s ON p.ProductSubcategoryID = s.ProductSubcategoryID
+WHERE s.ProductCategoryID = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>UPDATE with a JOIN (Day 9 drill 6) limited to category 1, Bikes. OUTPUT returns each changed row with deleted (before) and inserted (after) prices side by side: 97 bikes. ROLLBACK undoes all of it, so nothing is changed permanently.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">97 rows in OUTPUT (old and new price per bike), then 1 row: the count after ROLLBACK</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>Q5. MERGE a two-row staging table into Territory: one update, one insert</h3></div>
+        <pre><code class="language-sql">TRUNCATE TABLE TerritoryStaging;
+INSERT INTO TerritoryStaging (TerritoryID, Name, CountryRegionCode, [Group])
+VALUES (11, 'Pakistan (South Asia)', 'PK', 'Asia'), (15, 'Sri Lanka', 'LK', 'Asia');
+SET IDENTITY_INSERT Territory ON;
+MERGE Territory AS target
+USING TerritoryStaging AS source ON target.TerritoryID = source.TerritoryID
+WHEN MATCHED THEN UPDATE SET target.Name = source.Name
+WHEN NOT MATCHED THEN INSERT (TerritoryID, Name, CountryRegionCode, [Group], SalesYTD, SalesLastYear,
+                              CostYTD, CostLastYear, rowguid, ModifiedDate)
+     VALUES (source.TerritoryID, source.Name, source.CountryRegionCode, source.[Group], 0, 0, 0, 0, NEWID(), GETDATE())
+OUTPUT $action, inserted.TerritoryID, inserted.Name;
+SET IDENTITY_INSERT Territory OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two staging rows: 11 already exists, so MERGE updates its name; 15 is new, so it is inserted. OUTPUT $action shows UPDATE and INSERT. IDENTITY_INSERT is needed because Territory kept its identity column (Day 9).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows in OUTPUT: one UPDATE (territory 11), one INSERT (territory 15)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>Q6. reporting.TerritoryMonthly with a composite key, CHECK on Revenue, and a foreign key to Territory</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS reporting.TerritoryMonthly;
+CREATE TABLE reporting.TerritoryMonthly (
+    TerritoryID INT NOT NULL,
+    YearMonth CHAR(7) NOT NULL,
+    OrderCount INT NOT NULL,
+    Revenue DECIMAL(18,2) NOT NULL CONSTRAINT CK_TerritoryMonthly_Revenue CHECK (Revenue &gt;= 0),
+    CONSTRAINT PK_TerritoryMonthly PRIMARY KEY (TerritoryID, YearMonth),
+    CONSTRAINT FK_TerritoryMonthly_Territory FOREIGN KEY (TerritoryID) REFERENCES Territory(TerritoryID)
+);
+SELECT name, type_desc FROM sys.objects WHERE parent_object_id = OBJECT_ID('reporting.TerritoryMonthly');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Composite primary key: one row per territory per month. Named CHECK and FOREIGN KEY constraints (Day 10). The last SELECT lists the three constraints, proving they exist.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows: the PRIMARY KEY, CHECK and FOREIGN KEY constraints</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>Q7. A view that adds the territory name and country</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER VIEW reporting.vw_TerritoryMonthly AS
+SELECT tm.TerritoryID, t.Name AS Territory, t.CountryRegionCode AS Country,
+       tm.YearMonth, tm.OrderCount, tm.Revenue
+FROM reporting.TerritoryMonthly tm
+JOIN Territory t ON tm.TerritoryID = t.TerritoryID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CREATE OR ALTER makes the view re-runnable. The join to Territory supplies name and country code; the foreign key guarantees every TerritoryID has a match, so the INNER JOIN never drops rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>Q8. A procedure that loads it with TRY/CATCH and returns the row count</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER PROCEDURE reporting.usp_LoadTerritoryMonthly
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        DELETE FROM reporting.TerritoryMonthly;
+        INSERT INTO reporting.TerritoryMonthly (TerritoryID, YearMonth, OrderCount, Revenue)
+        SELECT TerritoryID, CONVERT(char(7), OrderDate, 120), COUNT(*), SUM(TotalDue)
+        FROM SalesOrderHeader GROUP BY TerritoryID, CONVERT(char(7), OrderDate, 120);
+        DECLARE @Rows INT = @@ROWCOUNT;
+        COMMIT TRANSACTION;
+        SELECT @Rows AS RowsLoaded;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT &gt; 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+EXEC reporting.usp_LoadTerritoryMonthly;
+SELECT TOP 5 * FROM reporting.vw_TerritoryMonthly ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Day 11 load shape: transaction, delete, insert, save @@ROWCOUNT, commit; on any error roll back and re-THROW so the caller sees the failure. 364 rows loaded. The SELECT from the Q7 view proves the view works on the loaded data.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (RowsLoaded = 364), then the top 5 rows from the view</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>Q9. A function returning price band, used in a SELECT</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER FUNCTION dbo.fn_PriceBand (@Price MONEY)
+RETURNS VARCHAR(10)
+AS
+BEGIN
+    RETURN CASE WHEN @Price &lt; 100 THEN 'Budget' WHEN @Price &lt; 1000 THEN 'Mid' ELSE 'Premium' END;
+END;
+GO
+SELECT dbo.fn_PriceBand(ListPrice) AS Band, COUNT(*) AS Products
+FROM Product WHERE ListPrice &gt; 0
+GROUP BY dbo.fn_PriceBand(ListPrice);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Day 11 scalar function, used in both SELECT and GROUP BY to count products per band.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows: Budget, Mid, Premium</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>Q10. SalesOrderDetail filtered by ProductID and ModifiedDate: show it scans</h3></div>
+        <pre><code class="language-sql">SET STATISTICS IO ON;
+SELECT SalesOrderID, OrderQty, LineTotal FROM SalesOrderDetail
+WHERE ProductID = 776 AND ModifiedDate &gt;= '2012-01-01' AND ModifiedDate &lt; '2013-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Product 776 was sold in 2011 and 2012 only, so the filter uses 2012 (106 order lines). SalesOrderDetail has no indexes (Day 12 dropped them all), so the only option is a Table Scan of the whole heap.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of step 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: step 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Table Scan of the heap</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>Q10. SalesOrderDetail filtered by ProductID and ModifiedDate: show it scans <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">CREATE NONCLUSTERED INDEX IX_SalesOrderDetail_Product_Modified
+    ON SalesOrderDetail (ProductID, ModifiedDate) INCLUDE (SalesOrderID, OrderQty, LineTotal);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Equality column first (ProductID), range column second (ModifiedDate), and the selected columns INCLUDEd so no lookup is needed. SalesOrderID must be included on a heap (Day 12 self-test Q2).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of step 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: step 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>Q10. SalesOrderDetail filtered by ProductID and ModifiedDate: show it scans <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderQty, LineTotal FROM SalesOrderDetail
+WHERE ProductID = 776 AND ModifiedDate &gt;= '2012-01-01' AND ModifiedDate &lt; '2013-01-01';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Same query, now an Index Seek straight to product 776 in 2012: its 106 order lines.</p><p class="pin"><span aria-hidden="true">📍</span> Scan became seek. The index is dropped again in the next step so AWPractice is left as Day 12 left it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of step 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: step 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan: Index Seek</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>Q10. SalesOrderDetail filtered by ProductID and ModifiedDate: show it scans <small>(continued)</small></h3></div>
+        <pre><code class="language-sql">DROP INDEX IX_SalesOrderDetail_Product_Modified ON SalesOrderDetail;
+SET STATISTICS IO OFF;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Cleans up so later work starts from the same state.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of step 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: step 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: Commands completed successfully</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Part 3: short answers (SSIS and Power BI)</h2><div class="tip"><strong>1. What are the two canvases in an SSIS package and what goes on each?</strong><br>Control Flow holds the tasks and the order they run in: Execute SQL Tasks, Data Flow Tasks, containers, joined by precedence constraints (the green arrows). Data Flow is the inside of one Data Flow Task: the rows moving from sources through transformations to destinations.<br><br><strong>2. Why did the first rerun of LoadSalesSummary fail and what are two ways to fix it?</strong><br>The table has a UNIQUE key on (TerritoryID, YearMonth), and the rerun tried to insert the same rows a second time. Fix 1: an Execute SQL Task that truncates (or deletes from) the target before the data flow, which is what the package does now. Fix 2: load into a staging table and MERGE into the target, or use a Lookup so only new rows are inserted.<br><br><strong>3. What does a Data Conversion transform do and when do you need one?</strong><br>It copies a column into a new column with a different SSIS data type. You need one when the source and destination types do not match and SSIS will not convert them by itself, most often Unicode text (DT_WSTR, nvarchar) going into a non-Unicode column (DT_STR, varchar), as with YearMonth from FORMAT().<br><br><strong>4. What is the difference between Import and DirectQuery in Power BI?</strong><br>Import copies the data into the Power BI model: fast visuals, but only as fresh as the last refresh, and the data has to fit in the model. DirectQuery stores no data and sends a query to the database every time a visual draws: always current, but slower, it puts load on the source, and some DAX features are limited.<br><br><strong>5. What does a relationship in the Model view do that a JOIN does in SQL?</strong><br>It tells the model how two tables match: the key column, the cardinality (many to one) and which way filters flow. You define it once, and every visual then combines the tables through it automatically, the way a JOIN combines them in a single query. Filters also travel along it, which is how the Territory slicer filters SalesSummary.</div><h2>Error log</h2><div class="tablewrap"><table class="map"><thead><tr><th>What happened</th><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>Encryption Support: unable to connect using an encrypted connection</td><td>SQL Server Express on this PC has no trusted certificate</td><td>OK to connect unencrypted (same PC only)</td></tr><tr><td>Line chart showed one point per year</td><td>A date field goes on the axis as a Date Hierarchy</td><td>Switch the axis field from Date Hierarchy to Date</td></tr><tr><td>Every visual suddenly showed one territory and one month</td><td>Clicking a row in the table cross-filters the whole page</td><td>Click the same row again to clear the selection</td></tr><tr><td>Data flow waited with no error (RESOURCE_SEMAPHORE)</td><td>Little free RAM, so SQL Server cut its query memory to 9 MB</td><td>min server memory 1024 MB for the run, then back to 0</td></tr></tbody></table></div><div class="tip"><strong>Files:</strong> the report is <a href="https://github.com/noortayyababatool-spec/sql-syllabus/tree/main/pbi">pbi/SalesSummary.pbix</a> and the package is <a href="https://github.com/noortayyababatool-spec/sql-syllabus/tree/main/ssis/AWReporting">ssis/AWReporting/LoadSalesSummary.dtsx</a>. Q10 uses 2012 because product 776 had no sales in 2013.</div>
+  <nav class="pager"><a href="../day13/">← Day 13: First SSIS package</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
