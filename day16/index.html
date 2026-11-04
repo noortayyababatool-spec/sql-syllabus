@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 16: Fact tables vs dimension tables · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/" aria-current="page">Day 16</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 16</p>
+  <h1>Day 16: Fact tables vs dimension tables</h1>
+  <p class="meta">Tue 20 October 2026 · 19 queries · run on AdventureWorksDW2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> look at any table and say which it is, what its grain is, and which columns are measures, keys and attributes.</p>
+    <p><strong>Read:</strong> Kimball Group summary pages &quot;Fact table structure&quot;, &quot;Dimension table structure&quot;, &quot;Grain&quot; and &quot;Additive, semi-additive, non-additive facts&quot;. Microsoft Learn &quot;Understand star schema and the importance for Power BI&quot;, sections on fact and dimension tables.</p>
+  </div>
+  <div class="tablewrap"><table class="map prose"><thead><tr><th>Term</th><th>Meaning</th><th>AdventureWorksDW example</th></tr></thead><tbody><tr><td><strong>Fact table</strong></td><td>Records events or measurements. Many rows, narrow, mostly numbers and keys</td><td>FactInternetSales, one row per order line</td></tr><tr><td><strong>Dimension table</strong></td><td>Describes the who, what, where and when of a fact. Fewer rows, wide, mostly text</td><td>DimProduct, DimCustomer, DimDate</td></tr><tr><td><strong>Grain</strong></td><td>What one row in the fact table represents. Decide this first, always</td><td>One row = one product on one order</td></tr><tr><td><strong>Measure</strong></td><td>A numeric column in a fact that you add up</td><td>SalesAmount, OrderQuantity, TaxAmt</td></tr><tr><td><strong>Surrogate key</strong></td><td>An integer key the warehouse invents, not the source system's ID</td><td>ProductKey (vs ProductAlternateKey, the OLTP ProductNumber)</td></tr><tr><td><strong>Foreign key in a fact</strong></td><td>Points at one dimension row</td><td>ProductKey, CustomerKey, OrderDateKey</td></tr><tr><td><strong>Attribute</strong></td><td>A descriptive column in a dimension that you filter or group by</td><td>EnglishProductName, Color, CalendarQuarter</td></tr><tr><td><strong>Degenerate dimension</strong></td><td>A dimension-like value stored directly in the fact because it has no attributes of its own</td><td>SalesOrderNumber in FactInternetSales</td></tr></tbody></table></div><div class="tip"><strong>Additivity:</strong> SalesAmount is <em>additive</em> (sum across any dimension). Inventory on hand is <em>semi-additive</em> (sum across products, not across dates). Unit price is <em>non-additive</em> (never sum it; recompute it from additive parts). Say which type a measure is before you aggregate it.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>16</span></li><li><a href="#written-exercise">Written exercise</a> <span>3</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Anatomy of a fact table</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'FactInternetSales' ORDER BY ORDINAL_POSITION;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ORDER BY ORDINAL_POSITION lists the columns in the order they were created. The first eight all end in Key and are int: ProductKey, OrderDateKey, DueDateKey, ShipDateKey, CustomerKey, PromotionKey, CurrencyKey, SalesTerritoryKey. Each points at one dimension row. Then SalesOrderNumber and SalesOrderLineNumber identify the order line, and the rest are numbers: OrderQuantity (smallint), UnitPrice, ExtendedAmount, ProductStandardCost, TotalProductCost, SalesAmount, TaxAmt, Freight (all money). The only text columns are tracking and PO numbers. 26 columns; the screenshot shows the first 15.</p><p class="pin"><span aria-hidden="true">📍</span> You can recognise a fact table from its column list alone: integer keys, money and quantity columns, almost no text.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">26 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Anatomy of a dimension table</h3></div>
+        <pre><code class="language-sql">SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'DimProduct' ORDER BY ORDINAL_POSITION;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One key first (ProductKey, int), then mostly descriptive columns: ProductAlternateKey, names in English, Spanish and French, Color, Size, SizeRange, ProductLine, Class, Style, ModelName, and descriptions in eight languages (nvarchar). There are a few numbers (StandardCost, ListPrice, Weight) but they describe the product rather than record an event. The last three, StartDate, EndDate and Status, track history. 36 columns.</p><p class="pin"><span aria-hidden="true">📍</span> A dimension is the list of words you can put in a report's slicer or row headers: colour, model, product line.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">36 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Row counts: facts are tall, dimensions are short</h3></div>
+        <pre><code class="language-sql">SELECT 'FactInternetSales' AS T, COUNT(*) AS Rows FROM FactInternetSales
+UNION ALL SELECT 'FactResellerSales', COUNT(*) FROM FactResellerSales
+UNION ALL SELECT 'DimProduct', COUNT(*) FROM DimProduct
+UNION ALL SELECT 'DimCustomer', COUNT(*) FROM DimCustomer
+UNION ALL SELECT 'DimDate', COUNT(*) FROM DimDate
+UNION ALL SELECT 'DimSalesTerritory', COUNT(*) FROM DimSalesTerritory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Six counts stacked with UNION ALL. The two fact tables have about 60,000 rows each (60,398 and 60,855). The dimensions are much smaller: 606 products, 11 territories and 3,652 dates (every day from 2005 to 2014, ten years). DimCustomer, at 18,484, is the exception: customer dimensions can be large, but they are still shorter than the facts that refer to them.</p><p class="pin"><span aria-hidden="true">📍</span> Facts grow with every event; dimensions grow only when something new appears to describe. In a real warehouse the gap is millions to thousands.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Prove the grain</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderNumber, SalesOrderLineNumber, COUNT(*)
+FROM FactInternetSales
+GROUP BY SalesOrderNumber, SalesOrderLineNumber
+HAVING COUNT(*) &gt; 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The claimed grain is 'one row = one product on one order line'. If that is true, the pair (SalesOrderNumber, SalesOrderLineNumber) is unique, so grouping by it and keeping only groups with more than one row returns nothing. It returns 0 rows, so the grain holds for all 60,398 rows.</p><p class="pin"><span aria-hidden="true">📍</span> State the grain first, then test it with exactly this GROUP BY ... HAVING COUNT(*) &gt; 1 query. Duplicates at the grain are the most common way a fact load double-counts revenue.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows: no order line appears twice</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Surrogate key vs natural key</h3></div>
+        <pre><code class="language-sql">SELECT ProductKey, ProductAlternateKey, EnglishProductName
+FROM DimProduct
+WHERE EnglishProductName LIKE 'Mountain-100%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Each Mountain-100 bike has two identifiers. ProductKey (344 to 351) is a surrogate key: a plain integer the warehouse assigned. ProductAlternateKey (BK-M82S-38 and so on) is the natural key: the ProductNumber from Production.Product in the OLTP database. Fact tables join on ProductKey; the alternate key is kept so you can trace a row back to the source system.</p><p class="pin"><span aria-hidden="true">📍</span> Surrogate keys are small, never change meaning, and belong to the warehouse. That last point matters in the next query.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Why surrogate keys: one product, several rows</h3></div>
+        <pre><code class="language-sql">SELECT ProductAlternateKey, COUNT(*)
+FROM DimProduct
+GROUP BY ProductAlternateKey
+HAVING COUNT(*) &gt; 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>If ProductAlternateKey were unique this would return nothing. It returns 77 product numbers that appear more than once: 52 appear twice and 25 three times. Those are 179 rows for 77 products, so 102 rows are extra versions. 606 minus 102 is 504, exactly the number of products in the OLTP Production.Product table.</p><p class="pin"><span aria-hidden="true">📍</span> The source system has one row per product; the warehouse keeps a new row each time a tracked attribute (here, the price) changes. The natural key cannot be the primary key any more, so the warehouse needs its own: the surrogate key. Day 20 covers this in full as a slowly changing dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">77 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>6. One product's history</h3></div>
+        <pre><code class="language-sql">SELECT ProductKey, ProductAlternateKey, EnglishProductName, ListPrice, StartDate, EndDate, Status
+FROM DimProduct
+WHERE ProductAlternateKey = 'CA-1098';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An extra look at one of the repeated products, the AWC Logo Cap. Three rows, three surrogate keys (223, 224, 225), one natural key. The list price was 8.6442 in the first two versions and 8.99 in the current one; Status = 'Current' and EndDate NULL mark the version in use now. A fact row points at whichever version was current when the sale happened; in this sample all 2,190 internet sales of the cap fall in the current version's period, so they all point at 225.</p><p class="pin"><span aria-hidden="true">📍</span> Data quirk: the EndDate values (2007, 2008) are earlier than the StartDate values (2011, 2012). 200 of the 606 rows have this. The sample's dates were shifted when it was rebuilt, but not consistently; trust Status and NULL EndDate, not the date order.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>7. Every foreign key resolves: zero orphans</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Orphans
+FROM FactInternetSales f
+LEFT JOIN DimProduct p ON f.ProductKey = p.ProductKey
+WHERE p.ProductKey IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The anti-join from Day 5: keep every fact row, attach the matching product, and count the rows where no product was found. The answer is 0, so every one of the 60,398 sales points at a real DimProduct row. If it were not 0, an INNER JOIN in a report would silently drop those sales.</p><p class="pin"><span aria-hidden="true">📍</span> Run this check for every key in a fact table after every load. The 'NA' unknown member row seen in DimSalesTerritory exists so that facts with a missing value still have something to point at.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>8. An additive measure: the total</h3></div>
+        <pre><code class="language-sql">SELECT SUM(SalesAmount) AS Revenue FROM FactInternetSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SalesAmount is additive: it can be summed across any dimension. The grand total is 29,358,677.2207, the same figure Day 15 reconciled against the OLTP online orders.</p><p class="pin"><span aria-hidden="true">📍</span> Additive measures are the easy case and the most common: amounts, quantities, costs.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>8. Summed by product colour</h3></div>
+        <pre><code class="language-sql">SELECT p.Color, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+GROUP BY p.Color;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same measure grouped by an attribute from DimProduct. Eight colours; Black (8.84 million) and Red (7.72 million) sell the most. 'NA' is used for products with no colour, such as accessories. The eight figures add back up to the 29.36 million total.</p><p class="pin"><span aria-hidden="true">📍</span> Grouping by a dimension attribute is the standard warehouse query: one fact, one join, one GROUP BY.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>8. Summed by calendar year</h3></div>
+        <pre><code class="language-sql">SELECT d.CalendarYear, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY d.CalendarYear;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same measure grouped by a DimDate attribute. Five years, 2010 to 2014; 2013 is the biggest at 16.35 million. 2010 and 2014 are tiny because the data covers only a few weeks of each (29 December 2010 to 28 January 2014). There is no ORDER BY, so the years come back in whatever order SQL Server finished grouping them; add ORDER BY d.CalendarYear for a report.</p><p class="pin"><span aria-hidden="true">📍</span> By colour, by year, or in total, SUM(SalesAmount) is always right. That is what additive means.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>9. A non-additive measure: SUM(UnitPrice)</h3></div>
+        <pre><code class="language-sql">SELECT SUM(UnitPrice) AS SumUnitPrice FROM FactInternetSales;
+SELECT SUM(SalesAmount) / SUM(OrderQuantity) AS WeightedAvgPrice FROM FactInternetSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Adding up unit prices has no business meaning: it is not revenue, not a count, not a price. The correct way to get an average price is total revenue divided by total units: 486.0869. But look at the first number: 29,358,677.2207, exactly the revenue total. That is a coincidence of this table: every one of the 60,398 internet order lines has OrderQuantity = 1 and no discount, so price times 1 equals SalesAmount on every row.</p><p class="pin"><span aria-hidden="true">📍</span> A wrong query can return a right-looking number. The next query uses the reseller table, where quantities vary, to show what SUM(UnitPrice) really does.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">SumUnitPrice 29,358,677.2207; WeightedAvgPrice 486.0869</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>9. The same test where quantities vary</h3></div>
+        <pre><code class="language-sql">SELECT SUM(UnitPrice) AS SumUnitPrice, SUM(SalesAmount) AS Revenue, SUM(OrderQuantity) AS Units,
+       SUM(SalesAmount) / SUM(OrderQuantity) AS WeightedAvgPrice, AVG(UnitPrice) AS SimpleAvgPrice
+FROM FactResellerSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An extra check, not in the drill. Resellers buy many units per line (214,378 units on 60,855 lines). Here SUM(UnitPrice) is 27.0 million while real revenue is 80.5 million: the sum is simply wrong. Even AVG(UnitPrice), 444.43, is misleading because it gives a one-unit line the same weight as a 40-unit line. The weighted average, revenue divided by units, is 375.27.</p><p class="pin"><span aria-hidden="true">📍</span> For a non-additive measure, never SUM and be careful with AVG: recompute it from additive parts (SUM of revenue / SUM of units).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>Semi-additive: inventory on hand</h3></div>
+        <pre><code class="language-sql">SELECT SUM(UnitsBalance) AS SumAcrossAllDates FROM FactProductInventory WHERE ProductKey = 1;
+SELECT TOP 1 DateKey, UnitsBalance AS OnHandNow FROM FactProductInventory WHERE ProductKey = 1 ORDER BY DateKey DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An extra example for the third type. FactProductInventory stores a daily snapshot: one row per product per day with UnitsBalance, the stock on hand that day. Product 1 has 1,281 daily rows, each saying 875. Summing across dates gives 1,120,875 units, which never existed. The real answer is the balance on the last date: 875.</p><p class="pin"><span aria-hidden="true">📍</span> Semi-additive: you may sum a balance across products (total stock today), but across dates you take the last value (or an average), never the sum.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">SumAcrossAllDates 1,120,875; OnHandNow 875 on 20140630</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>10. A fact table with a measure</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 * FROM FactSalesQuota;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FactSalesQuota has 163 rows: one per salesperson per quarter, with one measure, SalesAmountQuota. EmployeeKey and DateKey point at dimensions; CalendarYear and CalendarQuarter are copied in for convenience. The quota is additive across salespeople (team quota) and across quarters within a year.</p><p class="pin"><span aria-hidden="true">📍</span> Grain: one salesperson, one quarter, one target amount.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>10. A factless fact table</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 * FROM FactSurveyResponse;
+SELECT COUNT(*) AS Responses FROM FactSurveyResponse;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>FactSurveyResponse has keys (DateKey, CustomerKey, ProductCategoryKey, ProductSubcategoryKey), two names copied in for convenience, and a date, but no numeric measure at all. One row means: on this date, this customer said in a survey that they had bought something from this product subcategory. Customer 11001 has three rows on 9 March 2012: Tights, Fenders and Hydration Packs.</p><p class="pin"><span aria-hidden="true">📍</span> A factless fact records that an event happened. You measure it by counting rows: COUNT(*) responses per subcategory, per month, per customer.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows shown of 2,727</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="written-exercise"><h2>Written exercise</h2>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>FactResellerSales: every foreign key and its dimension</h3></div>
+        <pre><code class="language-sql">SELECT c.name AS ForeignKeyColumn, OBJECT_NAME(fk.referenced_object_id) AS PointsAt
+FROM sys.foreign_keys fk
+JOIN sys.foreign_key_columns fc ON fc.constraint_object_id = fk.object_id
+JOIN sys.columns c ON c.object_id = fc.parent_object_id AND c.column_id = fc.parent_column_id
+WHERE fk.parent_object_id = OBJECT_ID('dbo.FactResellerSales')
+ORDER BY c.name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Rather than guess from column names, this reads the foreign key constraints from the system catalog: sys.foreign_keys has one row per constraint, sys.foreign_key_columns says which column it is on, and OBJECT_NAME turns the referenced table's ID into a name. Nine keys: CurrencyKey to DimCurrency; OrderDateKey, DueDateKey and ShipDateKey all to DimDate; EmployeeKey to DimEmployee; ProductKey to DimProduct; PromotionKey to DimPromotion; ResellerKey to DimReseller; SalesTerritoryKey to DimSalesTerritory.</p><p class="pin"><span aria-hidden="true">📍</span> DimDate appears three times: one dimension playing three roles (order, due and ship date). This is called a role-playing dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">9 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>FactResellerSales: test the grain</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderNumber, SalesOrderLineNumber, COUNT(*)
+FROM FactResellerSales
+GROUP BY SalesOrderNumber, SalesOrderLineNumber
+HAVING COUNT(*) &gt; 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Before writing the grain sentence for FactResellerSales, test it the same way as drill 4. Zero duplicates, so the grain is one row per product per reseller order line.</p><p class="pin"><span aria-hidden="true">📍</span> Write the grain only after a query proves it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">0 rows: one row per reseller order line</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>DimEmployee: which attributes are worth grouping by</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Employees, COUNT(DISTINCT DepartmentName) AS Departments, COUNT(DISTINCT Title) AS Titles,
+       COUNT(DISTINCT SalesTerritoryKey) AS Territories, COUNT(DISTINCT Gender) AS Genders,
+       COUNT(DISTINCT MaritalStatus) AS MaritalStatuses, COUNT(DISTINCT EmailAddress) AS Emails
+FROM DimEmployee;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>COUNT(DISTINCT column) shows how many groups each attribute would produce. 296 rows. DepartmentName gives 16 groups, Title 67, SalesTerritoryKey 11, Gender 2, MaritalStatus 2: all useful row headers or slicers. EmailAddress has 290 distinct values for 296 rows, one group per person, so grouping by it just lists employees.</p><p class="pin"><span aria-hidden="true">📍</span> A good grouping attribute has far fewer distinct values than the table has rows. Near-unique columns (email, phone, national ID) are for looking someone up, not for grouping.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Written exercise: FactResellerSales</h2><div class="tip"><strong>Grain:</strong> one row per product on one reseller sales order line (SalesOrderNumber + SalesOrderLineNumber is unique: 0 duplicates in 60,855 rows).</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Measure</th><th>Type</th><th>Why</th></tr></thead><tbody><tr><td>OrderQuantity</td><td>Additive</td><td>Units add up across products, resellers, dates and territories.</td></tr><tr><td>ExtendedAmount</td><td>Additive</td><td>Quantity x unit price for the line, before discount; lines add up.</td></tr><tr><td>DiscountAmount</td><td>Additive</td><td>Money taken off the line; totals are meaningful.</td></tr><tr><td>TotalProductCost</td><td>Additive</td><td>Cost of all units on the line.</td></tr><tr><td>SalesAmount</td><td>Additive</td><td>Revenue for the line after discount.</td></tr><tr><td>TaxAmt</td><td>Additive</td><td>Tax charged; sums to total tax.</td></tr><tr><td>Freight</td><td>Additive</td><td>Shipping charged; sums to total freight.</td></tr><tr><td>UnitPrice</td><td>Non-additive</td><td>A price per unit; recompute as SUM(SalesAmount) / SUM(OrderQuantity) (Drill 9: summing gives 27.0 million vs 80.5 million revenue).</td></tr><tr><td>UnitPriceDiscountPct</td><td>Non-additive</td><td>A percentage; recompute as SUM(DiscountAmount) / SUM(ExtendedAmount).</td></tr><tr><td>ProductStandardCost</td><td>Non-additive</td><td>Cost of one unit; use TotalProductCost for totals.</td></tr></tbody></table></div><div class="tablewrap"><table class="map prose"><thead><tr><th>Foreign key</th><th>Points at</th></tr></thead><tbody><tr><td>ProductKey</td><td>DimProduct</td></tr><tr><td>OrderDateKey, DueDateKey, ShipDateKey</td><td>DimDate (three roles)</td></tr><tr><td>ResellerKey</td><td>DimReseller</td></tr><tr><td>EmployeeKey</td><td>DimEmployee (the salesperson)</td></tr><tr><td>PromotionKey</td><td>DimPromotion</td></tr><tr><td>CurrencyKey</td><td>DimCurrency</td></tr><tr><td>SalesTerritoryKey</td><td>DimSalesTerritory</td></tr></tbody></table></div><div class="tip">Not measures: SalesOrderNumber (a degenerate dimension), SalesOrderLineNumber and RevisionNumber (identifiers), CarrierTrackingNumber and CustomerPONumber (text), OrderDate, DueDate and ShipDate (dates copied in alongside their keys). Unlike FactInternetSales it has ResellerKey and EmployeeKey instead of CustomerKey, because a reseller order has a business customer and a salesperson.</div><h2>Written exercise: DimEmployee</h2><div class="tip"><strong>Five attributes to group by:</strong> DepartmentName (16 values), Title (67), SalesTerritoryKey via DimSalesTerritory (11), Gender (2), MaritalStatus (2). SalariedFlag and the year of HireDate also work.<br><br><strong>One to never group by:</strong> EmailAddress. It has 290 distinct values in 296 rows, one per person, so grouping by it just lists employees one by one. The same is true of Phone, LoginID and EmployeeNationalIDAlternateKey, and EmployeePhoto is an image. (296 rows but 290 national IDs: like DimProduct, DimEmployee keeps history rows.)</div><h2>Self-test: answers</h2><div class="tip"><strong>Define grain.</strong> The grain is what one row of a fact table represents, stated in business terms, for example "one product on one internet sales order line". It is decided before anything else because it fixes which dimensions can attach and what a SUM means.<br><br><strong>Two differences visible from INFORMATION_SCHEMA alone.</strong> (1) Data types: FactInternetSales is int keys plus money and smallint measures; DimProduct is mostly nvarchar text. (2) Keys: a fact has many columns ending in Key (eight foreign keys), a dimension has one key first and then attributes.<br><br><strong>Why ProductKey and ProductAlternateKey both exist.</strong> ProductAlternateKey is the source system's product number, kept so a row can be traced back. ProductKey is the warehouse's surrogate key; it is needed because the warehouse keeps several versions of one product (77 product numbers appear 2 or 3 times), so the natural key is no longer unique, and because integer keys are small and fast to join.<br><br><strong>One example of each.</strong> Additive: SalesAmount. Semi-additive: UnitsBalance in FactProductInventory (summing product 1 across dates gives 1,120,875, but there are only 875 on hand). Non-additive: UnitPrice.</div>
+  <nav class="pager"><a href="../day15/">← Day 15: What a warehouse is: OLTP vs OLAP</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -28,6 +28,15 @@ A day-by-day record of learning T-SQL on Microsoft SQL Server during my Data Eng
 | [13](day13/) | First SSIS package | The [AWReporting](ssis/AWReporting/) Visual Studio project: OLE DB source, Derived Column, Data Conversion, OLE DB destination, truncate-then-load for re-runs, Lookup with no-match redirect, Row Count, a CSV loaded through a staging table and MERGE, and an error log of every failure | 16 steps |
 | [14](day14/) | Power BI, the full chain, week 2 assessment | A one-page [Power BI report](pbi/) on the table the SSIS package loads (relationship, Date column, Avg Order Value DAX measure, slicer), proof that truncate → refresh → run package → refresh brings the report back, then 10 SQL tasks and 5 short answers | 23 steps |
 
+## Week 3: Data Warehousing
+
+Run against AdventureWorksDW2022, Microsoft's warehouse version of the same sample data, restored next to AdventureWorks2022.
+
+| Day | Topic | What it covers | Queries |
+|---|---|---|---|
+| [15](day15/) | What a warehouse is: OLTP vs OLAP | Table counts (72 vs 31), Dim and Fact naming, the same revenue question in both databases and why the answers differ, five joins vs one for a customer's country, wide dimensions, OLTP-to-warehouse table pairs with matching row counts | 10 |
+| [16](day16/) | Fact tables vs dimension tables | Fact and dimension anatomy from INFORMATION_SCHEMA, proving the grain, surrogate vs natural keys and product history rows, orphan checks, additive, semi-additive and non-additive measures, factless facts, foreign keys from the system catalog | 19 |
+
 ## The chain: SQL Server → SSIS → Power BI
 
 The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx) summarises `Sales.SalesOrderHeader` from AdventureWorks2022 by territory and month and loads it into `reporting.SalesSummary` in the AWPractice database. The Power BI report [SalesSummary.pbix](pbi/SalesSummary.pbix) imports that table.
@@ -45,6 +54,9 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **The CEO's `OrganizationNode` is NULL**, so the textbook self join with `GetAncestor(1)` leaves 7 employees without a manager instead of 1. Days 5 and 7 show a fix with `OR` in the `ON` clause.
 - **Every store customer that ordered has a contact `PersonID`.** The 701 customers with no person never placed an order, so INNER and LEFT joins from orders to Person both return 31,465 rows.
 - **Grouping by name merges different people.** Group revenue by `CustomerID`, not by first and last name.
+- **The warehouse's dates are shifted.** FactInternetSales matches the OLTP online orders to the cent (29,358,677.2207), but its order dates run from 29 Dec 2010 to 28 Jan 2014 instead of 31 May 2011 to 30 Jun 2014, so per-year figures differ between the two databases (Day 15).
+- **`SUM(UnitPrice)` looks right in FactInternetSales by accident.** Every internet order line has quantity 1, so it equals revenue; in FactResellerSales it gives 27.0M against 80.5M real revenue (Day 16).
+- **200 of 606 DimProduct rows have an EndDate before their StartDate.** Use `Status = 'Current'` / `EndDate IS NULL` to find the current version, not the date order (Day 16).
 
 ## Structure
 

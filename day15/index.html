@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 15: What a warehouse is: OLTP vs OLAP · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/" aria-current="page">Day 15</a><a href="../day16/">Day 16</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 15</p>
+  <h1>Day 15: What a warehouse is: OLTP vs OLAP</h1>
+  <p class="meta">Mon 19 October 2026 · 10 queries · run on AdventureWorks2022 (OLTP) and AdventureWorksDW2022 (warehouse)</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> explain in your own words why a company keeps two copies of its data in two different shapes.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;What is a data warehouse&quot; and &quot;OLTP vs OLAP&quot; (Azure Architecture Center). Kimball Group summary pages &quot;Business requirements&quot; and &quot;Dimensional modeling&quot;.</p>
+  </div>
+  <div class="tip"><strong>The core idea:</strong> an OLTP database such as AdventureWorks2022 is built for many small writes: one order, one customer update, fast and safe. It is normalised, so each fact is stored once, and a report needs many joins. A warehouse such as AdventureWorksDW2022 copies that data into a shape built for reading: fewer, wider tables, already joined and labelled, so an analyst or Power BI can sum revenue by region by month in one simple query over millions of rows.</div><div class="tip"><strong>Setup:</strong> AdventureWorksDW2022 was restored from Microsoft's official sample backup (AdventureWorksDW2022.bak, sql-server-samples on GitHub) onto the same SQL Server Express instance, so both databases can be queried side by side.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill-see-the-difference">Drill: see the difference</a> <span>9</span></li><li><a href="#self-test-support">Self-test support</a> <span>1</span></li></ol></div>
+  <section class="part" id="drill-see-the-difference"><h2>Drill: see the difference</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Count the tables in each database</h3></div>
+        <pre><code class="language-sql">SELECT 'OLTP' AS Db, COUNT(*) AS Tables FROM AdventureWorks2022.INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
+UNION ALL
+SELECT 'DW', COUNT(*) FROM AdventureWorksDW2022.INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INFORMATION_SCHEMA.TABLES lists every table and view in a database; TABLE_TYPE = 'BASE TABLE' keeps the real tables. Putting the database name in front (AdventureWorks2022.INFORMATION_SCHEMA...) lets one query look at two databases, and UNION ALL stacks the two counts. The OLTP database has 72 tables, the warehouse 31.</p><p class="pin"><span aria-hidden="true">📍</span> Fewer tables is the point of a warehouse: the OLTP design splits data into many small tables so each fact is stored once; the warehouse merges them back into a few wide ones.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. List the warehouse tables: Dim and Fact</h3></div>
+        <pre><code class="language-sql">SELECT TABLE_NAME FROM AdventureWorksDW2022.INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Sorting by name groups the warehouse tables by prefix. 16 start with Dim (dimensions: the who, what, where and when, such as DimCustomer, DimProduct, DimDate) and 10 start with Fact (events and measurements, such as FactInternetSales and FactResellerSales). The other 5 are housekeeping (AdventureWorksDWBuildVersion, DatabaseLog, sysdiagrams) or staging-style tables (NewFactCurrencyRate, ProspectiveBuyer). The screenshot shows the first rows; the full list is 31.</p><p class="pin"><span aria-hidden="true">📍</span> The naming is a promise: any Fact table holds numbers you add up and keys ending in Key; any Dim table holds text you filter and group by.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Same question, OLTP: revenue by territory and year</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT t.Name AS Territory, YEAR(h.OrderDate) AS Yr, SUM(h.TotalDue) AS Revenue
+FROM Sales.SalesOrderHeader h
+JOIN Sales.SalesTerritory t ON h.TerritoryID = t.TerritoryID
+GROUP BY t.Name, YEAR(h.OrderDate) ORDER BY Territory, Yr;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>In the OLTP database the year is not stored anywhere: YEAR(h.OrderDate) computes it for every one of the 31,465 orders, and the GROUP BY must repeat the same expression. The territory name lives in a separate table in the same Sales schema, so one join is needed. 10 territories x 4 years (2011 to 2014) = 40 rows. This sums TotalDue, which includes tax and freight, for every order: online and reseller.</p><p class="pin"><span aria-hidden="true">📍</span> Wrapping a column in a function, like YEAR(OrderDate), also stops SQL Server from seeking an index on that column (Day 12). The warehouse avoids this by storing the year as its own column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">40 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>3. Same question, warehouse: revenue by territory and year</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT st.SalesTerritoryRegion AS Territory, d.CalendarYear AS Yr, SUM(f.SalesAmount) AS Revenue
+FROM dbo.FactInternetSales f
+JOIN dbo.DimSalesTerritory st ON f.SalesTerritoryKey = st.SalesTerritoryKey
+JOIN dbo.DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY st.SalesTerritoryRegion, d.CalendarYear ORDER BY Territory, Yr;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The warehouse answers the same shape of question with two simple joins: the fact table holds the numbers (SalesAmount) and two integer keys; DimSalesTerritory supplies the name and DimDate supplies CalendarYear as a ready-made column, so there is no function to compute. It returns 41 rows. The numbers do not match the OLTP query, and the next step shows why.</p><p class="pin"><span aria-hidden="true">📍</span> Same question, different answer. Before trusting any report, check what the source table contains: FactInternetSales holds online orders only, and SalesAmount excludes tax and freight.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">41 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>Why the two answers differ: reconcile the totals</h3></div>
+        <pre><code class="language-sql">SELECT 'OLTP: every order, TotalDue' AS Source, SUM(TotalDue) AS Revenue, MIN(OrderDate) AS FirstOrder, MAX(OrderDate) AS LastOrder
+FROM AdventureWorks2022.Sales.SalesOrderHeader
+UNION ALL
+SELECT 'OLTP: online orders only, SubTotal', SUM(SubTotal), MIN(OrderDate), MAX(OrderDate)
+FROM AdventureWorks2022.Sales.SalesOrderHeader WHERE OnlineOrderFlag = 1
+UNION ALL
+SELECT 'DW: FactInternetSales, SalesAmount', SUM(SalesAmount), MIN(OrderDate), MAX(OrderDate)
+FROM AdventureWorksDW2022.dbo.FactInternetSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An extra check, not in the drill. Row 1 is what the OLTP query summed: 123.2 million, every order including reseller orders, tax and freight. Row 2 restricts the OLTP data to online orders (OnlineOrderFlag = 1) and uses SubTotal, which excludes tax and freight: 29,358,677.2207. Row 3, the warehouse fact table, gives exactly the same total to four decimal places. So the warehouse holds the same online orders, but its order dates run from 29 December 2010 to 28 January 2014 instead of 31 May 2011 to 30 June 2014: the sample's dates were shifted about five months earlier, which is why the per-year figures differ.</p><p class="pin"><span aria-hidden="true">📍</span> A warehouse is a copy, so it must reconcile with its source. Matching the grand total exactly (and finding the date shift) is the kind of check a data engineer runs after every load.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>4. Customer with geography, OLTP: count the joins</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 5 p.FirstName, p.LastName, a.City, sp.Name AS StateProvince, cr.Name AS Country
+FROM Sales.Customer c
+JOIN Person.Person p ON c.PersonID = p.BusinessEntityID
+JOIN Person.BusinessEntityAddress bea ON p.BusinessEntityID = bea.BusinessEntityID
+JOIN Person.Address a ON bea.AddressID = a.AddressID
+JOIN Person.StateProvince sp ON a.StateProvinceID = sp.StateProvinceID
+JOIN Person.CountryRegion cr ON sp.CountryRegionCode = cr.CountryRegionCode;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Five joins across six tables in two schemas to print a name and where the person lives. Each step exists because the OLTP design stores every fact once: the name is on Person, the link to an address is in BusinessEntityAddress (a person can have several), the city on Address, the state on StateProvince, and the country on CountryRegion. Updating a country name means changing one row, which is what OLTP is built for.</p><p class="pin"><span aria-hidden="true">📍</span> Normalised means each fact is stored in exactly one place. It makes writes safe and cheap, and makes reads long.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>4. Customer with geography, warehouse: one join</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT TOP 5 c.FirstName, c.LastName, g.City, g.StateProvinceName, g.EnglishCountryRegionName
+FROM dbo.DimCustomer c JOIN dbo.DimGeography g ON c.GeographyKey = g.GeographyKey;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The warehouse already did those joins once, during the load: DimCustomer carries the person's name and a GeographyKey, and DimGeography holds city, state and country together in one flat row. One join gives the same columns, and here even the same five people (Jon Yang, Eugene Huang, Ruben Torres, Christy Zhu, Elizabeth Johnson). That match is luck: TOP 5 without ORDER BY returns whichever rows SQL Server reads first, and the same OLTP query run from a script connection returned five different customers. Add ORDER BY whenever the choice of rows matters.</p><p class="pin"><span aria-hidden="true">📍</span> Denormalising means copying descriptive data into fewer, wider tables so readers do not have to join. The warehouse pays the join cost once at load time instead of every time someone asks.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>5. Column count of a product: OLTP vs warehouse</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS OltpProductColumns FROM AdventureWorks2022.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Product';
+SELECT COUNT(*) AS DwProductColumns FROM AdventureWorksDW2022.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'DimProduct';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>INFORMATION_SCHEMA.COLUMNS has one row per column, so COUNT(*) gives the width of a table. The OLTP Production.Product has 25 columns; DimProduct has 36. (Column aliases were added so the two result grids are labelled.)</p><p class="pin"><span aria-hidden="true">📍</span> Wider on purpose: DimProduct carries descriptions in eight languages, the model name, a photo and StartDate, EndDate and Status for price history, so a report never has to look anywhere else.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 result sets: Production.Product has 25 columns, DimProduct has 36</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>5. What a wide dimension looks like</h3></div>
+        <pre><code class="language-sql">SELECT TOP 3 * FROM AdventureWorksDW2022.dbo.DimProduct;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The first three products, all columns. ProductKey is the warehouse's own integer key, ProductAlternateKey (AR-5381) is the product number from the OLTP system, then names in English, Spanish and French, cost, colour, list price and so on. These first rows are parts such as Adjustable Race, so many attributes are NULL; bikes fill them in. The grid continues to the right with descriptions in more languages, a LargePhoto image and the history dates.</p><p class="pin"><span aria-hidden="true">📍</span> Day 16 explains the two keys: ProductKey is a surrogate key the warehouse invents, ProductAlternateKey is the natural key from the source.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test-support"><h2>Self-test support</h2>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>Matching table pairs: OLTP to warehouse</h3></div>
+        <pre><code class="language-sql">SELECT 'Sales.SalesOrderDetail (online)' AS OltpTable, (SELECT COUNT(*) FROM AdventureWorks2022.Sales.SalesOrderDetail d
+        JOIN AdventureWorks2022.Sales.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID WHERE h.OnlineOrderFlag = 1) AS OltpRows,
+       'FactInternetSales' AS DwTable, (SELECT COUNT(*) FROM AdventureWorksDW2022.dbo.FactInternetSales) AS DwRows
+UNION ALL SELECT 'Production.Product', (SELECT COUNT(*) FROM AdventureWorks2022.Production.Product),
+       'DimProduct', (SELECT COUNT(*) FROM AdventureWorksDW2022.dbo.DimProduct)
+UNION ALL SELECT 'Sales.Customer (people)', (SELECT COUNT(*) FROM AdventureWorks2022.Sales.Customer WHERE PersonID IS NOT NULL AND StoreID IS NULL),
+       'DimCustomer', (SELECT COUNT(*) FROM AdventureWorksDW2022.dbo.DimCustomer)
+UNION ALL SELECT 'Sales.SalesTerritory', (SELECT COUNT(*) FROM AdventureWorks2022.Sales.SalesTerritory),
+       'DimSalesTerritory', (SELECT COUNT(*) FROM AdventureWorksDW2022.dbo.DimSalesTerritory)
+UNION ALL SELECT 'Sales.Store', (SELECT COUNT(*) FROM AdventureWorks2022.Sales.Store),
+       'DimReseller', (SELECT COUNT(*) FROM AdventureWorksDW2022.dbo.DimReseller);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An extra check for the self-test question 'which tables correspond'. Each row puts an OLTP table next to its warehouse version with both row counts. Online order lines: 60,398 in both. Individual customers (Sales.Customer rows that are a person, not a store): 18,484 in both. Stores and DimReseller: 701 in both. Products: 504 vs 606, because DimProduct keeps old versions of products whose price changed (Day 16). Territories: 10 vs 11, because the warehouse adds an 'NA' row for sales with no known territory.</p><p class="pin"><span aria-hidden="true">📍</span> Equal row counts are a fast first test that a load copied everything. Where they differ, the difference should have a reason you can name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Written exercise: OLTP vs OLAP</h2><div class="tablewrap"><table class="map prose"><thead><tr><th></th><th>OLTP (online transaction processing)</th><th>OLAP (online analytical processing)</th></tr></thead><tbody><tr><td><strong>Purpose</strong></td><td>Run the business: record each sale, payment and change the moment it happens, correctly.</td><td>Understand the business: answer questions over history, such as which region grew and which product is falling.</td></tr><tr><td><strong>Typical query</strong></td><td>Touch a few rows by key: insert order 75124, update one customer's address, look up one order.</td><td>Read and aggregate many rows: total revenue by territory by year over all 60,398 order lines.</td></tr><tr><td><strong>Who uses it</strong></td><td>Applications: the website, the sales app, the warehouse scanner. Many users at once, each doing small things.</td><td>Analysts, managers, finance, Power BI reports and dashboards. Fewer users, each asking big questions.</td></tr><tr><td><strong>Write pattern</strong></td><td>Constant small INSERT, UPDATE and DELETE statements all day, each in its own transaction.</td><td>Loaded in batches by an ETL job (SSIS), for example every night; between loads it is read-only.</td></tr><tr><td><strong>Normalisation</strong></td><td>Highly normalised: each fact stored once (a country name lives only in Person.CountryRegion), so an update changes one row.</td><td>Denormalised on purpose: descriptions are copied into dimension rows (DimGeography holds city, state and country together), so reads need few joins.</td></tr><tr><td><strong>Table shape</strong></td><td>Many narrow tables linked by foreign keys: 72 tables in AdventureWorks2022.</td><td>A few fact tables (tall, numeric) surrounded by dimensions (short, wide, text): 31 tables in AdventureWorksDW2022.</td></tr><tr><td><strong>Example</strong></td><td>Sales.SalesOrderHeader + Sales.SalesOrderDetail + Production.Product + Person.Person and its address chain.</td><td>FactInternetSales joined to DimProduct, DimCustomer, DimDate and DimSalesTerritory.</td></tr></tbody></table></div><div class="tip"><strong>What would go wrong if Power BI ran directly against the OLTP database all day?</strong><br>Every visual would send a query with five or six joins and functions on date columns, scanning large tables, and these long reads would compete with the website and sales app for the same CPU, memory and disk. Reads also take shared locks, so a big report query can block, or be blocked by, the small writes that take orders, and checkout pages slow down. The report logic would be fragile too: every report would have to repeat the same joins and business rules (which orders count as revenue, tax or no tax), so two reports could disagree, as Drill 3 showed. And the OLTP database usually keeps only current values, so history such as last year's price is lost when a row is updated. A warehouse moves that load to a separate copy, does the joins once at load time, and keeps history.</div><h2>Self-test: answers</h2><div class="tip"><strong>Define OLTP and OLAP.</strong> OLTP is a database design for recording transactions as they happen: many small, fast, safe writes. OLAP is a design for analysing data: large reads that aggregate history, served from a warehouse built for reading.<br><br><strong>Three differences.</strong> (1) Workload: small writes vs large reads. (2) Shape: normalised, many narrow tables vs denormalised facts and dimensions. (3) Freshness and history: current state, updated in place vs loaded in batches and keeping history (DimProduct keeps old price versions).<br><br><strong>What normalised means and why the warehouse undoes it.</strong> Normalised means each fact is stored in exactly one place and other tables refer to it by key, so updates cannot leave copies out of step. The warehouse undoes it because it is not updated by users: it is loaded in batches, so repeated text costs little, and in return every report runs with one or two joins instead of six.<br><br><strong>Table pairs.</strong> Sales.SalesOrderDetail (online orders) to FactInternetSales, 60,398 rows each. Production.Product to DimProduct (504 products, 606 rows with history). Sales.Customer (people) to DimCustomer, 18,484 each. Sales.Store to DimReseller, 701 each. Sales.SalesTerritory to DimSalesTerritory (10 + an NA row).</div>
+  <nav class="pager"><a href="../day14/">← Day 14: Power BI on your table, then assessment</a><a href="../day16/">Day 16: Fact tables vs dimension tables →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

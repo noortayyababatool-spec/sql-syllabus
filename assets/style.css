@@ -73,3 +73,5 @@ dialog button{display:block;margin:8px auto;padding:6px 16px;border-radius:999px
 .map th,.map td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 .map th{background:var(--accent-soft);color:var(--ink)}
 .map td:last-child{white-space:normal;color:var(--muted)}
+.map.prose td{white-space:normal;vertical-align:top;min-width:9em}
+.map.prose td:last-child{color:var(--ink)}
