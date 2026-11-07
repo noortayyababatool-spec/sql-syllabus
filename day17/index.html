@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 17: Identify facts and dimensions from sample data · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/" aria-current="page">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 17</p>
+  <h1>Day 17: Identify facts and dimensions from sample data</h1>
+  <p class="meta">Wed 21 October 2026 · 28 queries · run on AdventureWorks2022, AdventureWorksDW2022 and AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> given raw transactional tables never seen before, say what the fact is, what its grain should be, and which dimensions hang off it.</p>
+    <p><strong>Method:</strong> Four questions in order: the business event (fact), the lowest level of detail (grain), the numbers (measures and their additivity), and what people filter or group by (dimensions).</p>
+  </div>
+  <div class="tablewrap"><table class="map prose"><thead><tr><th>Question</th><th>What it gives you</th><th>Sales example</th></tr></thead><tbody><tr><td><strong>1. What business event is being measured?</strong></td><td>The fact</td><td>An online sale</td></tr><tr><td><strong>2. What is the lowest level of detail you would ever want?</strong></td><td>The grain: one row per what?</td><td>One product on one order line</td></tr><tr><td><strong>3. What numbers describe the event?</strong></td><td>The measures, each with its additivity</td><td>OrderQty (additive), UnitPrice (non-additive)</td></tr><tr><td><strong>4. What would someone filter or group by?</strong></td><td>The dimensions: who, what, where, when, how</td><td>Customer, product, territory, order date</td></tr></tbody></table></div><div class="tip"><strong>Numbers that are not measures:</strong> a phone number, a postcode, an ID or a plate number is stored as digits but you would never add it up. Those are attributes (or keys), not measures. Test: would SUM of this column ever mean anything?</div><div class="tip"><strong>Where the queries ran:</strong> Exercises 1 and 2 read AdventureWorks2022 and AdventureWorksDW2022. Exercise 3 creates RawRides in AWPractice and then builds the star I designed (six dimensions and FactRide) so the self-test questions can be run, not just argued.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#exercise-1-sales-the-one-you-know">Exercise 1: sales, the one you know</a> <span>5</span></li><li><a href="#exercise-2-hr">Exercise 2: HR</a> <span>12</span></li><li><a href="#exercise-3-a-dataset-you-have-never-seen">Exercise 3: a dataset you have never seen</a> <span>6</span></li><li><a href="#self-test-does-the-model-answer-the-questions">Self-test: does the model answer the questions?</a> <span>5</span></li></ol></div>
+  <section class="part" id="exercise-1-sales-the-one-you-know"><h2>Exercise 1: sales, the one you know</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Q1 and Q2: the event and the grain in the OLTP tables</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT COUNT(*) AS OrderLines, COUNT(DISTINCT h.SalesOrderID) AS Orders, SUM(d.LineTotal) AS Revenue
+FROM Sales.SalesOrderDetail d
+JOIN Sales.SalesOrderHeader h ON d.SalesOrderID = h.SalesOrderID
+WHERE h.OnlineOrderFlag = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The business event is an online sale. The lowest level of detail is one product on one order, so the grain is the order line: 60,398 lines in 27,659 orders, 29,358,677.22 of revenue. Choosing the order (header) as the grain would lose which products were bought, so the line wins.</p><p class="pin"><span aria-hidden="true">📍</span> Pick the lowest level anyone could ask about. You can always add lines up to orders, but you can never split an order back into its lines.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Q3: the measures on a line</h3></div>
+        <pre><code class="language-sql">SELECT MIN(d.OrderQty) AS MinQty, MAX(d.OrderQty) AS MaxQty,
+       SUM(CASE WHEN d.UnitPriceDiscount &gt; 0 THEN 1 ELSE 0 END) AS DiscountedLines,
+       MIN(d.UnitPrice) AS MinPrice, MAX(d.UnitPrice) AS MaxPrice
+FROM Sales.SalesOrderDetail d
+JOIN Sales.SalesOrderHeader h ON d.SalesOrderID = h.SalesOrderID
+WHERE h.OnlineOrderFlag = 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The line carries OrderQty, UnitPrice, UnitPriceDiscount and LineTotal. Online, every line has quantity 1 and no line is discounted, so LineTotal equals UnitPrice here. OrderQty and LineTotal are additive; UnitPrice and the discount percentage are not (they are rates, recompute them from totals). Product cost comes from Production.Product.StandardCost, so a warehouse would copy it onto the line at load time.</p><p class="pin"><span aria-hidden="true">📍</span> Quantity and amount are measures. Price and discount percentage describe one line and must be recomputed, not summed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Q3: header numbers that belong to the whole order</h3></div>
+        <pre><code class="language-sql">SELECT SalesOrderID, OrderDate, DueDate, ShipDate, CustomerID, TerritoryID,
+       SubTotal, TaxAmt, Freight, TotalDue
+FROM Sales.SalesOrderHeader
+WHERE SalesOrderID = 43697;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TaxAmt and Freight are stored once per order, not per line. At a line grain they either have to be split across the lines (allocated) or kept in a separate order-level fact. The header also gives three dates (order, due, ship), the customer and the territory: those are dimensions (Q4: when, who, where).</p><p class="pin"><span aria-hidden="true">📍</span> A measure recorded at a higher level than the grain is a design decision: allocate it to the lines or keep it in its own fact.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Compare: the dimensions Microsoft attached to FactInternetSales</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS FactColumn,
+       OBJECT_NAME(fk.referenced_object_id) AS Dimension
+FROM sys.foreign_keys fk
+JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+WHERE fk.parent_object_id = OBJECT_ID('dbo.FactInternetSales')
+ORDER BY Dimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The foreign keys are the dimensions. My answer from the source tables was Product, Customer, Date (three roles), Territory. Microsoft's has those plus DimCurrency and DimPromotion. Currency comes from Sales.CurrencyRate and promotion from SpecialOffer, which were not in this exercise's table list, so the difference comes from the inputs rather than a different method. DimDate appears three times (order, due, ship): one dimension in three roles.</p><p class="pin"><span aria-hidden="true">📍</span> If you were only given six tables, five dimensions is the right answer. Microsoft had more source tables, so it had more dimensions to attach.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Compare: same grain, and the header measures were allocated to the lines</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS FactRows, COUNT(DISTINCT SalesOrderNumber) AS Orders,
+       SUM(SalesAmount) AS Revenue, SUM(TaxAmt) AS Tax, SUM(Freight) AS Freight,
+       (SELECT SUM(TaxAmt) FROM AdventureWorks2022.Sales.SalesOrderHeader WHERE OnlineOrderFlag = 1) AS OltpTax,
+       (SELECT SUM(Freight) FROM AdventureWorks2022.Sales.SalesOrderHeader WHERE OnlineOrderFlag = 1) AS OltpFreight
+FROM FactInternetSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>60,398 rows and 27,659 orders: Microsoft chose the same grain, one row per order line. Revenue matches to the cent. TaxAmt and Freight are on every line, so Microsoft allocated the header amounts down to the lines: tax adds back up exactly (2,348,694.2301), freight is 1.94 higher than the OLTP total (733,969.61 vs 733,967.67), which is rounding when an order's freight is split across its lines.</p><p class="pin"><span aria-hidden="true">📍</span> Microsoft was right to keep the line grain and allocate tax and freight, and the 1.94 gap shows the price: allocated measures can drift by rounding. Always reconcile them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="exercise-2-hr"><h2>Exercise 2: HR</h2>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. SELECT TOP 20 * FROM HumanResources.Employee</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 20 * FROM HumanResources.Employee;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per employee (290): national ID, login, job title, birth and hire dates, marital status, gender, salaried flag, vacation and sick hours. These are descriptions of a person, not events, so this table becomes the employee dimension. VacationHours and SickLeaveHours are balances, a snapshot of today.</p><p class="pin"><span aria-hidden="true">📍</span> A table with one row per thing and many descriptive columns is a dimension source.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. SELECT TOP 20 * FROM HumanResources.EmployeeDepartmentHistory</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 20 * FROM HumanResources.EmployeeDepartmentHistory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per employee per department assignment: department, shift, start date and end date (NULL means current). 296 rows for 290 people, so 5 people changed department (Sheela Word twice). Each row records an event that happened at a date: someone joined a department on a shift.</p><p class="pin"><span aria-hidden="true">📍</span> StartDate and EndDate on a row are the sign of history, and history is where facts hide.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. SELECT TOP 20 * FROM HumanResources.Department</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 20 * FROM HumanResources.Department;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>16 departments with a GroupName (for example Research and Development, Executive General and Administration). A small lookup: it becomes a dimension, or columns folded into the employee dimension.</p><p class="pin"><span aria-hidden="true">📍</span> Small lookup tables usually become dimension attributes.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">16 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. SELECT TOP 20 * FROM HumanResources.Shift</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 20 * FROM HumanResources.Shift;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three rows: Day 07:00 to 15:00, Evening 15:00 to 23:00, Night 23:00 to 07:00. It describes when someone works, so it becomes a tiny dimension (DimShift), or an attribute of the assignment.</p><p class="pin"><span aria-hidden="true">📍</span> Three rows is too small to need its own table in a star, but it is a dimension either way.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. SELECT TOP 20 * FROM HumanResources.EmployeePayHistory</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SELECT TOP 20 * FROM HumanResources.EmployeePayHistory;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per employee per pay change: RateChangeDate, Rate (hourly) and PayFrequency (1 = monthly, 2 = biweekly). The primary key is BusinessEntityID + RateChangeDate.</p><p class="pin"><span aria-hidden="true">📍</span> This is the pay-change event. Its grain is already visible in the key: one employee on one change date.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. The grain of a pay-change fact</h3></div>
+        <pre><code class="language-sql">SELECT Records AS PayChanges, COUNT(*) AS Employees
+FROM (SELECT BusinessEntityID, COUNT(*) AS Records
+      FROM HumanResources.EmployeePayHistory GROUP BY BusinessEntityID) x
+GROUP BY Records;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>316 pay records: 277 employees have one rate and 13 have three. The grain of a pay-change fact is one row per employee per rate change (BusinessEntityID + RateChangeDate is unique). Dimensions: Employee, Date of the change, Department at the time, Pay frequency.</p><p class="pin"><span aria-hidden="true">📍</span> State the grain as a sentence: &quot;one row per employee per rate change&quot;.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. Is Rate additive? No</h3></div>
+        <pre><code class="language-sql">SELECT BusinessEntityID, COUNT(*) AS PayRecords, SUM(Rate) AS SumOfRates, MAX(Rate) AS LatestRate
+FROM HumanResources.EmployeePayHistory
+WHERE BusinessEntityID = 4
+GROUP BY BusinessEntityID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Rob Walters (employee 4) earned 8.62, then 23.72, then 29.85 an hour. Summing gives 62.19 an hour, a rate he never had. Rate is non-additive: you can average it, take the latest, or compute the change (new rate minus old rate, which is additive across employees). A pay-change fact would store Rate plus RateChange as the measures.</p><p class="pin"><span aria-hidden="true">📍</span> An hourly rate is a price. Like UnitPrice on Day 16, never SUM it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. The second fact: department transfers</h3></div>
+        <pre><code class="language-sql">SELECT h.BusinessEntityID, p.FirstName, p.LastName, d.Name AS Department, s.Name AS Shift, h.StartDate, h.EndDate
+FROM HumanResources.EmployeeDepartmentHistory h
+JOIN Person.Person p ON p.BusinessEntityID = h.BusinessEntityID
+JOIN HumanResources.Department d ON d.DepartmentID = h.DepartmentID
+JOIN HumanResources.Shift s ON s.ShiftID = h.ShiftID
+WHERE h.BusinessEntityID IN (SELECT BusinessEntityID FROM HumanResources.EmployeeDepartmentHistory GROUP BY BusinessEntityID HAVING COUNT(*) &gt; 1)
+ORDER BY h.BusinessEntityID, h.StartDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The five people who moved: Rob Walters (Engineering to Tool Design), David Bradley, William Vong, Laura Norman and Sheela Word (three departments). This is the second fact: an assignment (or transfer) event with grain one row per employee per department assignment. It has no numbers to add, so it is a factless fact; you COUNT rows to get transfers or headcount on a date.</p><p class="pin"><span aria-hidden="true">📍</span> Two events, two facts: pay changes (with a measure) and assignments (factless).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">11 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Shift becomes a dimension</h3></div>
+        <pre><code class="language-sql">SELECT s.Name AS Shift, s.StartTime, s.EndTime, COUNT(*) AS CurrentEmployees
+FROM HumanResources.EmployeeDepartmentHistory h
+JOIN HumanResources.Shift s ON s.ShiftID = h.ShiftID
+WHERE h.EndDate IS NULL
+GROUP BY s.Name, s.StartTime, s.EndTime
+ORDER BY s.StartTime;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>176 people on the day shift, 62 evening and 52 night (290 current assignments). Shift is something you group by, so it is a dimension: DimShift with three rows (name, start time, end time), attached to the assignment fact. It is small enough that a pure star would fold it into the assignment as a column.</p><p class="pin"><span aria-hidden="true">📍</span> Anything you would put on a report's rows or a slicer is a dimension, however small.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. DimEmployee: history rows for the same five people</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT EmployeeKey, FirstName, LastName, DepartmentName, Title, BaseRate, StartDate, EndDate, Status
+FROM DimEmployee
+WHERE EmployeeNationalIDAlternateKey IN (SELECT EmployeeNationalIDAlternateKey FROM DimEmployee GROUP BY EmployeeNationalIDAlternateKey HAVING COUNT(*) &gt; 1)
+ORDER BY LastName, StartDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>DimEmployee has 296 rows for 290 people: the extra 6 rows belong to exactly the five people who moved department in the OLTP (Sheela Word has three rows). So Microsoft kept the transfers as history rows in the dimension (slowly changing dimension, Day 20+). But every version carries the same, current department and rate, and the dates do not match the OLTP transfer dates, so the history in the sample is only structural.</p><p class="pin"><span aria-hidden="true">📍</span> Microsoft put the HR events into the dimension as versions, not into a fact.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">11 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>16. DimEmployee keeps only the latest pay rate</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS CurrentRows,
+       SUM(CASE WHEN d.BaseRate = lr.Rate THEN 1 ELSE 0 END) AS BaseRateIsLatestRate
+FROM DimEmployee d
+JOIN AdventureWorks2022.HumanResources.Employee e ON e.NationalIDNumber = d.EmployeeNationalIDAlternateKey
+OUTER APPLY (SELECT TOP 1 ph.Rate FROM AdventureWorks2022.HumanResources.EmployeePayHistory ph
+             WHERE ph.BusinessEntityID = e.BusinessEntityID ORDER BY ph.RateChangeDate DESC) lr
+WHERE d.Status = 'Current';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>All 290 current rows have BaseRate equal to the employee's most recent rate in EmployeePayHistory. The 26 earlier rates of the 13 people with raises are not in the warehouse anywhere. The pay-change fact I designed above simply does not exist in AdventureWorksDW.</p><p class="pin"><span aria-hidden="true">📍</span> If a question needs history and the warehouse only kept the latest value, the warehouse cannot answer it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>17. No HR fact in the warehouse</h3></div>
+        <pre><code class="language-sql">SELECT name AS FactTable FROM sys.tables WHERE name LIKE 'Fact%' ORDER BY name;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Ten fact tables: sales (internet, reseller, reasons), quotas, finance, currency rates, inventory, call centre, survey responses and product descriptions. None measures pay or transfers. FactSalesQuota and FactResellerSales use DimEmployee only as the salesperson. DimEmployee exists to describe who sold, not to analyse HR.</p><p class="pin"><span aria-hidden="true">📍</span> The warehouse was built for sales analysis. Employees are there as a dimension of sales.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="exercise-3-a-dataset-you-have-never-seen"><h2>Exercise 3: a dataset you have never seen</h2>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>18. Create RawRides in AWPractice</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+DROP TABLE IF EXISTS dbo.RawRides;
+CREATE TABLE RawRides (
+    RideID INT, RiderPhone VARCHAR(20), RiderName VARCHAR(50), RiderCity VARCHAR(50),
+    DriverID INT, DriverName VARCHAR(50), VehicleType VARCHAR(20), VehiclePlate VARCHAR(10),
+    PickupTime DATETIME, DropoffTime DATETIME, PickupZone VARCHAR(30), DropoffZone VARCHAR(30),
+    DistanceKm DECIMAL(6,2), FareAmount DECIMAL(8,2), TipAmount DECIMAL(8,2), PaymentMethod VARCHAR(10),
+    Rating TINYINT, PromoCode VARCHAR(10)
+);
+INSERT INTO RawRides VALUES
+(1, '0300-1111111', 'Ayesha', 'Lahore', 501, 'Tariq', 'Mini', 'LEB-1234', '2026-10-01 08:05', '2026-10-01 08:32', 'DHA', 'Gulberg', 9.4, 450, 50, 'Card', 5, NULL),
+(2, '0321-2222222', 'Bilal', 'Lahore', 502, 'Nadeem', 'Bike', 'LEC-5678', '2026-10-01 08:10', '2026-10-01 08:25', 'Johar Town', 'Model Town', 5.1, 180, 0, 'Cash', 4, 'OCT10'),
+(3, '0300-1111111', 'Ayesha', 'Lahore', 503, 'Faisal', 'Mini', 'LED-9012', '2026-10-01 18:40', '2026-10-01 19:20', 'Gulberg', 'DHA', 10.2, 520, 0, 'Card', 3, NULL),
+(4, '0333-3333333', 'Sara', 'Karachi', 601, 'Kamran', 'AC', 'KHI-3456', '2026-10-02 09:00', '2026-10-02 09:45', 'Clifton', 'Saddar', 12.0, 700, 100, 'Wallet', 5, 'OCT10'),
+(5, '0321-2222222', 'Bilal', 'Lahore', 502, 'Nadeem', 'Bike', 'LEC-5678', '2026-10-02 08:12', '2026-10-02 08:28', 'Johar Town', 'Model Town', 5.1, 180, 20, 'Cash', 5, NULL);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The syllabus script, with DROP TABLE IF EXISTS added so it can be re-run. &quot;5 rows affected&quot; in Messages.</p><p class="pin"><span aria-hidden="true">📍</span> One flat table, the way rides usually arrive from an app's export.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows affected</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>19. Look at the raw data</h3></div>
+        <pre><code class="language-sql">SELECT * FROM RawRides;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Five rides over two days. The four questions: (1) the event is a completed ride; (2) the grain is one row per ride (RideID); (3) the numbers are DistanceKm, FareAmount, TipAmount and Rating; (4) people would group by rider, driver, vehicle, pickup and dropoff zone, date, time of day, payment method and promo.</p><p class="pin"><span aria-hidden="true">📍</span> RideID, RiderPhone, DriverID and VehiclePlate are numbers or codes you would never sum: they are identifiers, not measures.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>20. What the raw table repeats</h3></div>
+        <pre><code class="language-sql">SELECT 'Rider' AS Entity, RiderPhone AS Id, RiderName + ', ' + RiderCity AS Description, COUNT(*) AS TimesStored
+FROM RawRides GROUP BY RiderPhone, RiderName, RiderCity
+UNION ALL
+SELECT 'Driver + vehicle', CAST(DriverID AS VARCHAR(10)), DriverName + ', ' + VehicleType + ' ' + VehiclePlate, COUNT(*)
+FROM RawRides GROUP BY DriverID, DriverName, VehicleType, VehiclePlate
+ORDER BY Entity, TimesStored DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Ayesha's name and city are stored twice, Bilal's twice, and Nadeem with his Bike LEC-5678 twice. With five rows that is harmless; with five million, a rider changing city means updating every one of their rides, and a typo in one row splits a rider in two. A dimension stores each rider once and the fact points at it by key.</p><p class="pin"><span aria-hidden="true">📍</span> Repeated descriptive text in a raw table is a dimension waiting to be pulled out.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of step 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: step 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">7 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q21">
+        <div class="q-head"><span class="num">#21</span><h3>21. Build the dimensions</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS dbo.FactRide, dbo.DimRider, dbo.DimDriver, dbo.DimVehicle, dbo.DimZone, dbo.DimRideDate, dbo.DimPayment;
+CREATE TABLE DimRider (RiderKey INT IDENTITY PRIMARY KEY, RiderPhone VARCHAR(20) NOT NULL UNIQUE, RiderName VARCHAR(50), RiderCity VARCHAR(50));
+CREATE TABLE DimDriver (DriverKey INT IDENTITY PRIMARY KEY, DriverID INT NOT NULL UNIQUE, DriverName VARCHAR(50));
+CREATE TABLE DimVehicle (VehicleKey INT IDENTITY PRIMARY KEY, VehiclePlate VARCHAR(10) NOT NULL UNIQUE, VehicleType VARCHAR(20));
+CREATE TABLE DimZone (ZoneKey INT IDENTITY PRIMARY KEY, ZoneName VARCHAR(30) NOT NULL, City VARCHAR(50), CONSTRAINT UQ_Zone UNIQUE (ZoneName, City));
+CREATE TABLE DimRideDate (DateKey INT PRIMARY KEY, FullDate DATE, DayName VARCHAR(10), MonthName VARCHAR(10), CalendarYear INT);
+CREATE TABLE DimPayment (PaymentKey INT IDENTITY PRIMARY KEY, PaymentMethod VARCHAR(10), PromoCode VARCHAR(10), HasPromo BIT);
+INSERT INTO DimRider (RiderPhone, RiderName, RiderCity) SELECT DISTINCT RiderPhone, RiderName, RiderCity FROM RawRides;
+INSERT INTO DimDriver (DriverID, DriverName) SELECT DISTINCT DriverID, DriverName FROM RawRides;
+INSERT INTO DimVehicle (VehiclePlate, VehicleType) SELECT DISTINCT VehiclePlate, VehicleType FROM RawRides;
+INSERT INTO DimZone (ZoneName, City) SELECT PickupZone, RiderCity FROM RawRides UNION SELECT DropoffZone, RiderCity FROM RawRides;
+INSERT INTO DimRideDate SELECT DISTINCT CONVERT(INT, FORMAT(PickupTime, 'yyyyMMdd')), CAST(PickupTime AS DATE),
+       DATENAME(weekday, PickupTime), DATENAME(month, PickupTime), YEAR(PickupTime) FROM RawRides;
+INSERT INTO DimPayment (PaymentMethod, PromoCode, HasPromo)
+SELECT DISTINCT PaymentMethod, PromoCode, CASE WHEN PromoCode IS NULL THEN 0 ELSE 1 END FROM RawRides;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Six dimensions, each with an integer surrogate key and the natural key kept as a unique column: 3 riders (by phone), 4 drivers, 4 vehicles (by plate), 6 zones, 2 dates and 4 payment/promo combinations. Vehicle is separate from driver because a car can change hands. Zone carries the city (the raw table only has the rider's city, so a zone takes the city of the rides it appears in). Payment method and promo code are both tiny, so they share one &quot;junk&quot; dimension instead of two one-column tables.</p><p class="pin"><span aria-hidden="true">📍</span> Each DISTINCT pulls one entity out of the raw table. The UNIQUE constraint on the natural key stops a second copy creeping in on the next load.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_21.png" aria-label="Enlarge screenshot of step 21"><img src="shots/q_21.png" loading="lazy" alt="SSMS screenshot: step 21 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Dimensions created and loaded (Messages tab)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q22">
+        <div class="q-head"><span class="num">#22</span><h3>22. Build and load the fact</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS dbo.FactRide;
+CREATE TABLE FactRide (
+    RideID INT PRIMARY KEY,
+    DateKey INT REFERENCES DimRideDate(DateKey), PickupHour TINYINT,
+    RiderKey INT REFERENCES DimRider(RiderKey), DriverKey INT REFERENCES DimDriver(DriverKey),
+    VehicleKey INT REFERENCES DimVehicle(VehicleKey),
+    PickupZoneKey INT REFERENCES DimZone(ZoneKey), DropoffZoneKey INT REFERENCES DimZone(ZoneKey),
+    PaymentKey INT REFERENCES DimPayment(PaymentKey),
+    PickupTime DATETIME, DropoffTime DATETIME,
+    DistanceKm DECIMAL(6,2), DurationMin INT, FareAmount DECIMAL(8,2), TipAmount DECIMAL(8,2), Rating TINYINT
+);
+INSERT INTO FactRide
+SELECT r.RideID, CONVERT(INT, FORMAT(r.PickupTime, 'yyyyMMdd')), DATEPART(hour, r.PickupTime),
+       dr.RiderKey, dd.DriverKey, v.VehicleKey, pz.ZoneKey, dz.ZoneKey, pm.PaymentKey,
+       r.PickupTime, r.DropoffTime, r.DistanceKm, DATEDIFF(minute, r.PickupTime, r.DropoffTime),
+       r.FareAmount, r.TipAmount, r.Rating
+FROM RawRides r
+JOIN DimRider dr ON dr.RiderPhone = r.RiderPhone
+JOIN DimDriver dd ON dd.DriverID = r.DriverID
+JOIN DimVehicle v ON v.VehiclePlate = r.VehiclePlate
+JOIN DimZone pz ON pz.ZoneName = r.PickupZone AND pz.City = r.RiderCity
+JOIN DimZone dz ON dz.ZoneName = r.DropoffZone AND dz.City = r.RiderCity
+JOIN DimPayment pm ON pm.PaymentMethod = r.PaymentMethod AND ISNULL(pm.PromoCode, '') = ISNULL(r.PromoCode, '');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per ride. RideID stays in the fact as a degenerate dimension (it identifies the ride but has no attributes of its own). DimZone is joined twice, once as pickup and once as dropoff: a role-playing dimension like DimDate in FactInternetSales. The load swaps every natural key for the dimension's surrogate key and computes DurationMin once. The promo join uses ISNULL because NULL = NULL is not true. &quot;5 rows affected&quot;.</p><p class="pin"><span aria-hidden="true">📍</span> If the fact row count after the load differs from the raw row count, a dimension lookup failed. Five in, five out.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_22.png" aria-label="Enlarge screenshot of step 22"><img src="shots/q_22.png" loading="lazy" alt="SSMS screenshot: step 22 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows affected</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q23">
+        <div class="q-head"><span class="num">#23</span><h3>23. The fact table</h3></div>
+        <pre><code class="language-sql">SELECT * FROM FactRide;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Only keys, two timestamps and five numbers. The text (names, city, plate, zone names) is gone from the fact and lives once in the dimensions. Nadeem's two rides point at DriverKey 2 and VehicleKey 3 twice instead of repeating his name and plate.</p><p class="pin"><span aria-hidden="true">📍</span> A fact row is narrow: keys plus measures.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_23.png" aria-label="Enlarge screenshot of step 23"><img src="shots/q_23.png" loading="lazy" alt="SSMS screenshot: step 23 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test-does-the-model-answer-the-questions"><h2>Self-test: does the model answer the questions?</h2>
+      <article class="q" id="q24">
+        <div class="q-head"><span class="num">#24</span><h3>24. Rides per zone per day</h3></div>
+        <pre><code class="language-sql">SELECT d.FullDate, z.ZoneName AS PickupZone, COUNT(*) AS Rides
+FROM FactRide f
+JOIN DimRideDate d ON d.DateKey = f.DateKey
+JOIN DimZone z ON z.ZoneKey = f.PickupZoneKey
+GROUP BY d.FullDate, z.ZoneName
+ORDER BY d.FullDate, z.ZoneName;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Five rows, one ride each. Counting rows of the fact is the measure here: the grain is one ride, so COUNT(*) is the number of rides. Swap PickupZoneKey for DropoffZoneKey to count by destination.</p><p class="pin"><span aria-hidden="true">📍</span> No join to RawRides needed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_24.png" aria-label="Enlarge screenshot of step 24"><img src="shots/q_24.png" loading="lazy" alt="SSMS screenshot: step 24 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q25">
+        <div class="q-head"><span class="num">#25</span><h3>25. Average tip by payment method</h3></div>
+        <pre><code class="language-sql">SELECT p.PaymentMethod, COUNT(*) AS Rides, AVG(f.TipAmount) AS AvgTip
+FROM FactRide f
+JOIN DimPayment p ON p.PaymentKey = f.PaymentKey
+GROUP BY p.PaymentMethod
+ORDER BY AvgTip DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Wallet 100 (one ride), Card 25, Cash 10. TipAmount is additive, so AVG works on it directly.</p><p class="pin"><span aria-hidden="true">📍</span> Group by a dimension attribute, aggregate a measure: the pattern for every report.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_25.png" aria-label="Enlarge screenshot of step 25"><img src="shots/q_25.png" loading="lazy" alt="SSMS screenshot: step 25 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q26">
+        <div class="q-head"><span class="num">#26</span><h3>26. Top drivers by fare</h3></div>
+        <pre><code class="language-sql">SELECT d.DriverName, COUNT(*) AS Rides, SUM(f.FareAmount) AS Fare
+FROM FactRide f
+JOIN DimDriver d ON d.DriverKey = f.DriverKey
+GROUP BY d.DriverName
+ORDER BY Fare DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Kamran 700, Faisal 520, Tariq 450, Nadeem 360 (from two rides). FareAmount is additive across rides, drivers and dates.</p><p class="pin"><span aria-hidden="true">📍</span> Group by the key's attribute (name) only when names are unique; with real data group by DriverKey and show the name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_26.png" aria-label="Enlarge screenshot of step 26"><img src="shots/q_26.png" loading="lazy" alt="SSMS screenshot: step 26 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q27">
+        <div class="q-head"><span class="num">#27</span><h3>27. Repeat riders</h3></div>
+        <pre><code class="language-sql">SELECT r.RiderName, r.RiderPhone, COUNT(*) AS Rides
+FROM FactRide f
+JOIN DimRider r ON r.RiderKey = f.RiderKey
+GROUP BY r.RiderName, r.RiderPhone
+HAVING COUNT(*) &gt; 1;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Ayesha and Bilal each rode twice. This works because DimRider identifies a rider by phone number, so the same person always gets the same RiderKey.</p><p class="pin"><span aria-hidden="true">📍</span> All four self-test questions run on the star alone: the model is complete for them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_27.png" aria-label="Enlarge screenshot of step 27"><img src="shots/q_27.png" loading="lazy" alt="SSMS screenshot: step 27 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q28">
+        <div class="q-head"><span class="num">#28</span><h3>28. Additivity check: Rating and DistanceKm</h3></div>
+        <pre><code class="language-sql">SELECT SUM(Rating) AS SumOfRatings, AVG(CAST(Rating AS DECIMAL(4,2))) AS AvgRating,
+       SUM(DistanceKm) AS TotalKm, SUM(FareAmount) / SUM(DistanceKm) AS FarePerKm
+FROM FactRide;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>SUM(Rating) gives 22, which means nothing; the average, 4.4, does. Rating is non-additive. DistanceKm is additive (41.8 km in total), and a rate such as fare per km (48.56) is computed from the two sums, never stored and summed. CAST makes AVG return decimals: AVG of a tinyint would round down to 4.</p><p class="pin"><span aria-hidden="true">📍</span> Rating: average it. DistanceKm, FareAmount, TipAmount, DurationMin: sum them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_28.png" aria-label="Enlarge screenshot of step 28"><img src="shots/q_28.png" loading="lazy" alt="SSMS screenshot: step 28 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Exercise 1 notes: sales, compared with FactInternetSales</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Question</th><th>My answer from the six OLTP tables</th><th>Microsoft (FactInternetSales)</th></tr></thead><tbody><tr><td>Fact</td><td>An online sale</td><td>The same</td></tr><tr><td>Grain</td><td>One product on one order line (SalesOrderDetail): 60,398 rows</td><td>The same: 60,398 rows, SalesOrderNumber + SalesOrderLineNumber</td></tr><tr><td>Measures</td><td>OrderQty and LineTotal (additive); UnitPrice and UnitPriceDiscount (non-additive); product cost copied from Product.StandardCost; TaxAmt and Freight live on the header, one per order</td><td>OrderQuantity, ExtendedAmount, SalesAmount, ProductStandardCost, TotalProductCost, UnitPrice, UnitPriceDiscountPct, DiscountAmount, and TaxAmt and Freight allocated down to every line</td></tr><tr><td>Dimensions</td><td>Product (with subcategory and category), Customer (name from Person), Date in three roles (order, due, ship), Territory</td><td>DimProduct, DimCustomer, DimDate (three roles), DimSalesTerritory, plus DimCurrency and DimPromotion</td></tr><tr><td>Degenerate</td><td>SalesOrderID / SalesOrderNumber</td><td>SalesOrderNumber, plus CarrierTrackingNumber and CustomerPONumber kept as text</td></tr></tbody></table></div><div class="tip"><strong>Where I differed, and was Microsoft right?</strong> (1) Microsoft has two more dimensions, currency and promotion. They come from Sales.CurrencyRate and Sales.SpecialOffer, which were not in this exercise's table list, so the difference is the inputs, not the method. (2) I left TaxAmt and Freight at order level; Microsoft allocated them to the lines. That keeps one fact table and lets tax be summed by product, at the price of rounding: tax reconciles exactly, freight is 1.94 higher than the OLTP total. For a sales warehouse, allocation is the practical choice, so yes, Microsoft was right, provided someone reconciles the allocated totals.</div><h2>Exercise 2 notes: HR</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody><tr><td>What is the fact? (there are two)</td><td>(1) A <strong>pay change</strong> (EmployeePayHistory): an employee's rate changed on a date. (2) A <strong>department assignment</strong> (EmployeeDepartmentHistory): an employee joined a department on a shift on a date. The second has no numbers, so it is a factless fact: you count rows to get transfers or headcount.</td></tr><tr><td>Grain of a pay-change fact</td><td>One row per employee per rate change (BusinessEntityID + RateChangeDate is the key): 316 rows, 277 people with one rate, 13 with three.</td></tr><tr><td>Is Rate additive?</td><td>No. It is an hourly price. Rob Walters's three rates sum to 62.19 an hour, a rate he never had. Average it, take the latest, or store the change (new minus old), which is additive.</td></tr><tr><td>What does Shift become?</td><td>A dimension, DimShift: 3 rows (Day, Evening, Night with start and end times), attached to the assignment fact. It is small enough that a pure star would fold it into the fact or a junk dimension.</td></tr><tr><td>DimEmployee in the warehouse</td><td>296 rows for 290 people. The 6 extra rows belong to exactly the 5 people who changed department in the OLTP, so transfers became history versions of the dimension. BaseRate equals the latest pay rate for all 290 current rows; the 26 earlier rates are not stored anywhere in the warehouse.</td></tr></tbody></table></div><div class="tip"><strong>Why did Microsoft not build an HR fact?</strong> AdventureWorksDW is a sales warehouse: every fact table measures selling, finance or customers, and DimEmployee is there to answer "who sold it" for FactResellerSales and FactSalesQuota. The HR data is tiny (290 employees, 316 pay rows, 296 assignments), so HR questions can be answered straight from the OLTP database without a warehouse. Pay is also sensitive, and keeping it out of a widely shared reporting database is a reasonable choice. A real HR warehouse would add a headcount snapshot fact (one row per employee per month) and a pay-change fact.</div><h2>Exercise 3 notes: ride-sharing</h2><div class="tip"><strong>Fact and grain:</strong> the event is a completed ride. Grain: one row per ride (RideID). Five raw rows become five fact rows.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Measure</th><th>Additive?</th><th>Why</th></tr></thead><tbody><tr><td>FareAmount</td><td>Additive</td><td>Fares add up across rides, drivers, zones and days (2,030 in total).</td></tr><tr><td>TipAmount</td><td>Additive</td><td>Same: sum it, or average it per payment method.</td></tr><tr><td>DistanceKm</td><td>Additive</td><td>Kilometres add up (41.8 km). Ratios such as fare per km are computed from the sums.</td></tr><tr><td>DurationMin</td><td>Additive</td><td>Derived: DropoffTime minus PickupTime, computed at load (see the stretch question).</td></tr><tr><td>Rating</td><td>Non-additive</td><td>A score from 1 to 5. The sum (22) means nothing; the average (4.4) does.</td></tr><tr><td>Ride count</td><td>Additive</td><td>Not a column: COUNT(*) on the fact, because the grain is one ride.</td></tr></tbody></table></div><div class="tablewrap"><table class="map prose"><thead><tr><th>Dimension</th><th>Attributes</th><th>Own table or folded in?</th></tr></thead><tbody><tr><td>Rider</td><td>RiderPhone (natural key), RiderName, RiderCity</td><td>Own table (DimRider): riders repeat and change city.</td></tr><tr><td>Driver</td><td>DriverID, DriverName</td><td>Own table (DimDriver).</td></tr><tr><td>Vehicle</td><td>VehiclePlate, VehicleType</td><td>Own table (DimVehicle): a car can change driver. Folded into the driver in a pure star (Day 19).</td></tr><tr><td>Zone</td><td>ZoneName, City</td><td>Own table (DimZone), used twice: pickup and dropoff (role-playing).</td></tr><tr><td>Date</td><td>FullDate, DayName, MonthName, CalendarYear</td><td>Own table (DimRideDate), key yyyymmdd like DimDate.</td></tr><tr><td>Time of day</td><td>PickupHour</td><td>Folded into the fact as PickupHour; a 24-row DimTimeOfDay (hour, morning peak, evening peak) is the next step.</td></tr><tr><td>Payment method</td><td>Card, Cash, Wallet</td><td>Too small for its own table: combined with promo into one junk dimension.</td></tr><tr><td>Promo</td><td>PromoCode, HasPromo</td><td>Same junk dimension (DimPayment, 4 combinations).</td></tr></tbody></table></div><div class="tip"><strong>Degenerate dimension:</strong> RideID stays in the fact: it identifies the ride but has no attributes of its own. <strong>What the raw table duplicates:</strong> Ayesha's name and city twice, Bilal's twice, Nadeem with his bike LEC-5678 twice. In the star each is stored once and the fact points at it by key, so a change of city is one UPDATE, not one per ride.</div><h3>The star</h3><pre><code class="language-plaintext">                 DimRideDate                    DimRider
+                 DateKey (yyyymmdd)             RiderKey
+                 FullDate, DayName,             RiderPhone (natural key)
+                 MonthName, CalendarYear        RiderName, RiderCity
+                          \                       /
+                           \                     /
+  DimZone (pickup)  ---  FactRide  ---------------  DimDriver
+  DimZone (dropoff) ---  RideID (degenerate)        DriverKey
+  ZoneKey                DateKey, PickupHour         DriverID (natural key)
+  ZoneName, City         RiderKey, DriverKey,        DriverName
+                         VehicleKey, PaymentKey,
+                         PickupZoneKey, DropoffZoneKey
+                         PickupTime, DropoffTime
+                         DistanceKm, DurationMin,
+                         FareAmount, TipAmount, Rating
+                           /                     \
+                          /                       \
+                 DimPayment (junk)              DimVehicle
+                 PaymentKey                     VehicleKey
+                 PaymentMethod, PromoCode,      VehiclePlate (natural key)
+                 HasPromo                       VehicleType</code></pre><h2>Stretch: store ride duration, or compute it at query time?</h2><div class="tip"><strong>For storing it:</strong> duration is computed once at load, every report and Power BI visual gets the same number, and it can be summed and averaged like any other measure without repeating DATEDIFF everywhere.<br><strong>For computing it:</strong> it is fully derived from PickupTime and DropoffTime, so storing it duplicates data that can drift if a timestamp is corrected later, and the formula (minutes or seconds? rounding?) can change without reloading.<br><strong>Decision:</strong> store DurationMin in the fact, computed in the load from the two timestamps, and keep the timestamps too. Reports should not each reinvent a measure, and if a timestamp is corrected the same load recomputes it.</div><h2>Self-test: does the sketch answer the four questions?</h2><div class="tip">Yes, all four ran against the star with no join to RawRides (queries 24 to 27): rides per zone per day (FactRide + DimRideDate + DimZone), average tip by payment method (FactRide + DimPayment), top drivers by fare (FactRide + DimDriver) and repeat riders (FactRide + DimRider, grouped by phone).</div>
+  <nav class="pager"><a href="../day16/">← Day 16: Fact tables vs dimension tables</a><a href="../day18/">Day 18: Basic reporting queries on the warehouse →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 19: Star schema and snowflake schema · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/" aria-current="page">Day 19</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 19</p>
+  <h1>Day 19: Star schema and snowflake schema</h1>
+  <p class="meta">Fri 23 October 2026 · 15 queries · run on AdventureWorksDW2022 and AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> draw both, say when each is used, and recognise that AdventureWorksDW is a mix.</p>
+    <p><strong>Read:</strong> Kimball Group &quot;Star schema&quot; and &quot;Snowflake&quot; summary pages. Microsoft Learn &quot;Understand star schema and the importance for Power BI&quot;, in full.</p>
+  </div>
+  <div class="tablewrap"><table class="map prose"><thead><tr><th></th><th>Star</th><th>Snowflake</th></tr></thead><tbody><tr><td><strong>Shape</strong></td><td>One fact in the middle; each dimension is one flat table joined directly to it</td><td>Dimensions normalised into chains: DimProduct to DimProductSubcategory to DimProductCategory</td></tr><tr><td><strong>Joins</strong></td><td>One per dimension used</td><td>One per level of each chain</td></tr><tr><td><strong>Repeated data</strong></td><td>Some: "Bikes" is stored on every bike row of DimProduct</td><td>None: each category name is stored once</td></tr><tr><td><strong>For users</strong></td><td>Simple: every attribute of a product is in the product table</td><td>Harder: users must know which table holds Category</td></tr><tr><td><strong>When used</strong></td><td>The default, and what Power BI expects</td><td>A huge dimension, or a sub-dimension shared by several dimensions (DimGeography is used by both DimCustomer and DimReseller)</td></tr></tbody></table></div><div class="tip"><strong>AdventureWorksDW is a mix:</strong> each fact table is the centre of a star, and three dimensions grow snowflake chains (product, customer geography, employee territory). The drills find both from the system catalog.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill-find-both-in-adventureworksdw">Drill: find both in AdventureWorksDW</a> <span>11</span></li><li><a href="#written-exercise-the-ride-model-as-a-star-and-as-a-snowflake">Written exercise: the ride model as a star and as a snowflake</a> <span>4</span></li></ol></div>
+  <section class="part" id="drill-find-both-in-adventureworksdw"><h2>Drill: find both in AdventureWorksDW</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Every foreign key: the schema diagram as data</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT fk.name AS FK, OBJECT_NAME(fk.parent_object_id) AS FromTable, OBJECT_NAME(fk.referenced_object_id) AS ToTable
+FROM sys.foreign_keys fk ORDER BY FromTable, ToTable;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>44 foreign keys. Read top to bottom, the Dim rows come first: a dimension pointing at another dimension is a snowflake link, and a table pointing at itself (DimAccount, DimEmployee, DimOrganization, DimDepartmentGroup) is a parent-child hierarchy. Then the Fact rows: each one is an arm of a star. FactInternetSales and FactResellerSales each point at DimDate three times (FK_..._DimDate, DimDate1, DimDate2: order, due, ship).</p><p class="pin"><span aria-hidden="true">📍</span> A database diagram is just this list drawn as boxes and lines.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">44 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. The star part: what FactInternetSales joins to directly</h3></div>
+        <pre><code class="language-sql">SELECT OBJECT_NAME(fk.referenced_object_id) AS Dimension
+FROM sys.foreign_keys fk WHERE OBJECT_NAME(fk.parent_object_id) = 'FactInternetSales';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Eight foreign keys to six dimensions: DimCurrency, DimCustomer, DimDate (three times), DimProduct, DimPromotion, DimSalesTerritory. Each is one join away from the fact: that is the star.</p><p class="pin"><span aria-hidden="true">📍</span> Six points on the star; DimDate is used three times in different roles.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. The snowflake part: dimensions that point at other dimensions</h3></div>
+        <pre><code class="language-sql">SELECT OBJECT_NAME(fk.parent_object_id) AS Dimension, OBJECT_NAME(fk.referenced_object_id) AS PointsTo
+FROM sys.foreign_keys fk
+WHERE OBJECT_NAME(fk.parent_object_id) LIKE 'Dim%' AND OBJECT_NAME(fk.referenced_object_id) LIKE 'Dim%';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>11 rows. Four are self-references (DimAccount, DimDepartmentGroup, DimEmployee, DimOrganization point at themselves for parent-child hierarchies), which are not snowflakes. The real chains: DimProduct to DimProductSubcategory to DimProductCategory; DimCustomer to DimGeography to DimSalesTerritory; DimReseller to DimGeography; DimEmployee to DimSalesTerritory; DimOrganization to DimCurrency. The syllabus names three; the query shows DimGeography itself also points on to DimSalesTerritory, so the customer chain is three tables long.</p><p class="pin"><span aria-hidden="true">📍</span> AdventureWorksDW is a star at the fact and a snowflake around product, geography and territory.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">11 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Flatten the product snowflake into a view</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER VIEW dbo.vw_DimProductFlat AS
+SELECT p.ProductKey, p.EnglishProductName AS Product, p.Color, p.Size, p.ListPrice,
+       ps.EnglishProductSubcategoryName AS Subcategory, pc.EnglishProductCategoryName AS Category
+FROM DimProduct p
+LEFT JOIN DimProductSubcategory ps ON p.ProductSubcategoryKey = ps.ProductSubcategoryKey
+LEFT JOIN DimProductCategory pc ON ps.ProductCategoryKey = pc.ProductCategoryKey;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The view does the two snowflake joins once, so users see one flat product table with Subcategory and Category as columns: a star-shaped dimension. The joins are LEFT JOINs because 209 of the 606 products have no subcategory (components and older items); an INNER JOIN would silently drop them from the dimension. CREATE OR ALTER makes the script re-runnable (Day 10).</p><p class="pin"><span aria-hidden="true">📍</span> This is what you hand to Power BI: one product table, one relationship to the fact.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab (view created; statistics still on from Day 18)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Day 18 drill 2 through the view: one join instead of three</h3></div>
+        <pre><code class="language-sql">SELECT v.Category, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN dbo.vw_DimProductFlat v ON f.ProductKey = v.ProductKey
+GROUP BY v.Category ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Same three categories and the same totals as Day 18 drill 2 (Bikes 28.32 million, Accessories 0.70 million, Clothing 0.34 million). The query names one dimension. Products without a category would appear under NULL; none of them was ever sold online, so there is no NULL row.</p><p class="pin"><span aria-hidden="true">📍</span> Fewer joins for the person writing the query. Whether the server does less work is the next question.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Cost of the snowflake: the plan for three joins</h3></div>
+        <pre><code class="language-sql">SELECT pc.EnglishProductCategoryName AS Category, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+JOIN DimProductSubcategory ps ON p.ProductSubcategoryKey = ps.ProductSubcategoryKey
+JOIN DimProductCategory pc ON ps.ProductCategoryKey = pc.ProductCategoryKey
+GROUP BY pc.EnglishProductCategoryName ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Include Actual Execution Plan (Ctrl+M) is on. Three join operators, one per link: a Nested Loops joins subcategory to category (37 rows), and two Merge Joins bring in DimProduct and the fact (the lower branch, scrolled out of view). The optimizer is clever here: it first aggregates FactInternetSales by ProductKey (a Hash Match aggregate turns 60,398 rows into about 160), then joins the small result to the dimensions. Estimated cost 1.55.</p><p class="pin"><span aria-hidden="true">📍</span> Count the join operators in the plan: one per table after the first.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan tab</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. The view version of the same plan</h3></div>
+        <pre><code class="language-sql">SELECT v.Category, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN dbo.vw_DimProductFlat v ON f.ProductKey = v.ProductKey
+GROUP BY v.Category ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The query text has one join, but the plan still joins all four tables: SQL Server expands the view into its definition before optimising. It is also more expensive (estimated cost 2.45 against 1.55, about 57% more): the view's LEFT JOINs become outer joins (Nested Loops Left Outer, Hash Match Right Outer), which limit how the optimizer can reorder them, so it no longer aggregates the fact first and hashes all 60,398 rows instead. It even suggests a missing index. A view saves typing and mistakes, not work. Only a physically flat dimension (Category stored as a column in DimProduct, which is what a star means) removes the joins at query time.</p><p class="pin"><span aria-hidden="true">📍</span> A view flattens the model for people; a flattened table flattens it for the server too.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Execution plan tab</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Cost of the star: how much text flattening would repeat</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Customers, COUNT(DISTINCT GeographyKey) AS DistinctGeographies,
+       COUNT(*) * 1.0 / COUNT(DISTINCT GeographyKey) AS CustomersPerGeography,
+       (SELECT COUNT(*) FROM DimGeography) AS GeographyRows
+FROM DimCustomer;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>18,484 customers live in only 336 distinct geographies (DimGeography has 655 rows; the rest belong to resellers or nobody). The syllabus comment says about 650 and 28 repeats; the real figure is about 55 customers per geography, so flattening city, state and country into DimCustomer repeats each city name about 55 times. That is still only a few hundred kilobytes: disk is cheap, joins are not.</p><p class="pin"><span aria-hidden="true">📍</span> Check the syllabus' estimates against the data: here the repetition is double what was predicted, and the conclusion still holds.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. Conformed dimension: one DimDate shared by every fact</h3></div>
+        <pre><code class="language-sql">SELECT OBJECT_NAME(fk.parent_object_id) AS Fact, COUNT(*) AS DateKeys
+FROM sys.foreign_keys fk WHERE OBJECT_NAME(fk.referenced_object_id) = 'DimDate' GROUP BY OBJECT_NAME(fk.parent_object_id);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Eight fact tables point at the same DimDate: call centre, currency rates, finance, internet sales (3 keys), inventory, reseller sales (3 keys), sales quotas and survey responses. Because they share one date table, &quot;2013&quot; or &quot;Q4&quot; means the same days in every report, and Day 18 drill 6 could stack internet and reseller revenue by year safely.</p><p class="pin"><span aria-hidden="true">📍</span> A conformed dimension is one dimension table used by several facts, with the same keys and the same meaning.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">8 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. Database diagram: FactInternetSales and its six dimensions</h3></div>
+        <pre><code class="language-sql">-- SSMS: Object Explorer &gt; Databases &gt; AdventureWorksDW2022 &gt; Database Diagrams &gt; New Database Diagram
+-- (Yes to &quot;create the support objects&quot;, the first time only)
+-- Add Table: FactInternetSales, DimCurrency, DimCustomer, DimDate, DimProduct, DimPromotion, DimSalesTerritory
+-- Select all &gt; Table View &gt; Keys, then right-click &gt; Arrange Tables</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The drill 2 result drawn by SSMS from the foreign keys. FactInternetSales sits in the middle with its ten key columns; each dimension is one line away. The key end of each line is at the dimension, the infinity end at the fact: one dimension row, many fact rows. DimDate has three lines (order, due and ship date). Table View &quot;Keys&quot; hides the descriptive columns so the shape is visible.</p><p class="pin"><span aria-hidden="true">📍</span> This is the star: one fact, one join to every dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Database diagram (SSMS)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. The same diagram with DimProductSubcategory and DimProductCategory</h3></div>
+        <pre><code class="language-sql">-- Right-click the diagram &gt; Add Table: DimProductSubcategory, DimProductCategory
+-- Table View &gt; Keys, Arrange Tables, zoom 55%</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Adding the two product tables grows a branch on the right: DimProduct to DimProductSubcategory to DimProductCategory, each pointing at the next through ProductSubcategoryKey and ProductCategoryKey. Category is now three lines away from the fact instead of one. That branch is the snowflake.</p><p class="pin"><span aria-hidden="true">📍</span> A star grows a branch: that branch is a snowflake.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Database diagram (SSMS)</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="written-exercise-the-ride-model-as-a-star-and-as-a-snowflake"><h2>Written exercise: the ride model as a star and as a snowflake</h2>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. Pure star: Zone and City in one table, Vehicle folded into the driver</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+DROP TABLE IF EXISTS dbo.StarLocation, dbo.StarDriver;
+SELECT ZoneKey AS LocationKey, ZoneName AS Zone, City INTO StarLocation FROM DimZone;
+SELECT DISTINCT d.DriverKey, d.DriverName, v.VehiclePlate, v.VehicleType
+INTO StarDriver
+FROM FactRide f JOIN DimDriver d ON d.DriverKey = f.DriverKey JOIN DimVehicle v ON v.VehicleKey = f.VehicleKey;
+SELECT * FROM StarLocation; SELECT * FROM StarDriver;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Built from the Day 17 dimensions. StarLocation holds zone and city together (6 rows; Lahore repeats four times). StarDriver holds each driver with the vehicle they drove (4 rows). Keys are kept equal to the Day 17 keys so FactRide can join to them unchanged.</p><p class="pin"><span aria-hidden="true">📍</span> Each dimension is one flat table, one join from the fact.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 locations and 4 drivers</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. Fare by city by month on the star: 2 joins</h3></div>
+        <pre><code class="language-sql">SELECT l.City, d.CalendarYear, d.MonthName, SUM(f.FareAmount) AS Fare
+FROM FactRide f
+JOIN StarLocation l ON l.LocationKey = f.PickupZoneKey
+JOIN DimRideDate d ON d.DateKey = f.DateKey
+GROUP BY l.City, d.CalendarYear, d.MonthName;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Lahore 1,330 and Karachi 700 in October 2026 (the five rides add up to 2,030). Two joins: one to location for the city, one to date for the month.</p><p class="pin"><span aria-hidden="true">📍</span> Star: one join per dimension used.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Snowflake: Zone points to City, Driver to Vehicle to VehicleType</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS dbo.SnowDriver, dbo.SnowVehicle, dbo.SnowVehicleType, dbo.SnowZone, dbo.SnowCity;
+SELECT IDENTITY(INT, 1, 1) AS CityKey, City INTO SnowCity FROM (SELECT DISTINCT City FROM DimZone) c;
+SELECT z.ZoneKey, z.ZoneName, c.CityKey INTO SnowZone FROM DimZone z JOIN SnowCity c ON c.City = z.City;
+SELECT IDENTITY(INT, 1, 1) AS VehicleTypeKey, VehicleType INTO SnowVehicleType FROM (SELECT DISTINCT VehicleType FROM DimVehicle) t;
+SELECT v.VehicleKey, v.VehiclePlate, t.VehicleTypeKey INTO SnowVehicle FROM DimVehicle v JOIN SnowVehicleType t ON t.VehicleType = v.VehicleType;
+SELECT DISTINCT f.DriverKey, d.DriverName, f.VehicleKey INTO SnowDriver FROM FactRide f JOIN DimDriver d ON d.DriverKey = f.DriverKey;
+SELECT 'SnowCity' AS T, COUNT(*) AS Rows FROM SnowCity UNION ALL SELECT 'SnowZone', COUNT(*) FROM SnowZone
+UNION ALL SELECT 'SnowVehicleType', COUNT(*) FROM SnowVehicleType UNION ALL SELECT 'SnowVehicle', COUNT(*) FROM SnowVehicle
+UNION ALL SELECT 'SnowDriver', COUNT(*) FROM SnowDriver;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same information normalised into five tables: 2 cities, 6 zones (each pointing at a city), 3 vehicle types, 4 vehicles (each pointing at a type) and 4 drivers (each pointing at a vehicle). Nothing is repeated: &quot;Lahore&quot; is stored once instead of four times, &quot;Mini&quot; once instead of twice.</p><p class="pin"><span aria-hidden="true">📍</span> Snowflake: no repeated text, but each level is another table.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. Fare by city by month on the snowflake: 3 joins</h3></div>
+        <pre><code class="language-sql">SELECT c.City, d.CalendarYear, d.MonthName, SUM(f.FareAmount) AS Fare
+FROM FactRide f
+JOIN SnowZone z ON z.ZoneKey = f.PickupZoneKey
+JOIN SnowCity c ON c.CityKey = z.CityKey
+JOIN DimRideDate d ON d.DateKey = f.DateKey
+GROUP BY c.City, d.CalendarYear, d.MonthName;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Same answer, one join more: the city is two steps from the fact. A question about vehicle type would need three joins on the snowflake (driver, vehicle, type) against one on the star.</p><p class="pin"><span aria-hidden="true">📍</span> I would ship the star (reasons below the queries).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Written exercise: the ride model twice</h2><pre><code class="language-plaintext">STAR: zone and city in one table, vehicle folded into the driver
+
+  StarLocation (LocationKey, Zone, City)   x2: pickup, dropoff
+           |
+  DimRideDate -- FactRide -- StarDriver (DriverKey, DriverName, VehiclePlate, VehicleType)
+           |
+  DimRider, DimPayment
+
+  Fare by city by month:  FactRide -&gt; StarLocation -&gt; City
+                          FactRide -&gt; DimRideDate  -&gt; MonthName      = 2 joins</code></pre><pre><code class="language-plaintext">SNOWFLAKE: zone points to city, driver to vehicle to vehicle type
+
+  SnowCity (CityKey, City)
+      ^
+  SnowZone (ZoneKey, ZoneName, CityKey)   x2: pickup, dropoff
+      |
+  DimRideDate -- FactRide -- SnowDriver (DriverKey, DriverName, VehicleKey)
+                                  -&gt; SnowVehicle (VehicleKey, VehiclePlate, VehicleTypeKey)
+                                      -&gt; SnowVehicleType (VehicleTypeKey, VehicleType)
+
+  Fare by city by month:  FactRide -&gt; SnowZone -&gt; SnowCity -&gt; City
+                          FactRide -&gt; DimRideDate -&gt; MonthName       = 3 joins</code></pre><div class="tip"><strong>Which I would ship:</strong> the star. City and vehicle type are tiny (2 cities, 3 vehicle types), so folding them in repeats a few words while saving a join on every city or vehicle question and giving Power BI users one table per subject; I would only snowflake if a level were large or shared by several dimensions.</div><h2>Self-test: answers</h2><div class="tip"><strong>A star from memory with five dimensions:</strong></div><pre><code class="language-plaintext">                 DimDate
+                    |
+  DimCustomer -- FactSales -- DimProduct
+                 /       \
+         DimStore         DimPromotion
+
+  FactSales: DateKey, CustomerKey, ProductKey, StoreKey, PromotionKey,
+             Quantity, SalesAmount, Cost</code></pre><div class="tip"><strong>Three snowflake chains in AdventureWorksDW:</strong> DimProduct to DimProductSubcategory to DimProductCategory; DimCustomer to DimGeography (to DimSalesTerritory); DimEmployee to DimSalesTerritory. (DimReseller to DimGeography and DimOrganization to DimCurrency are two more.)<br><br><strong>Conformed dimension:</strong> one dimension table shared by several fact tables with the same keys and meaning, so their results can be compared and combined: DimDate is used by eight facts.<br><br><strong>When snowflaking is worth it, in one line:</strong> when a dimension level is very large or is shared by several dimensions and must be maintained in one place.<br><br><strong>Why Power BI prefers stars:</strong> each dimension becomes one table with one relationship to the fact, so filters flow in one direction with no chains; users find every attribute where they expect it; and fewer relationships make the model smaller and faster to query.</div>
+  <nav class="pager"><a href="../day18/">← Day 18: Basic reporting queries on the warehouse</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

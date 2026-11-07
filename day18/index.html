@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 18: Basic reporting queries on the warehouse · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/" aria-current="page">Day 18</a><a href="../day19/">Day 19</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 18</p>
+  <h1>Day 18: Basic reporting queries on the warehouse</h1>
+  <p class="meta">Thu 22 October 2026 · 15 queries · run on AdventureWorksDW2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> write the standard report shapes against a star schema and feel how much easier they are than on OLTP.</p>
+    <p><strong>Pattern:</strong> FROM the fact, JOIN the dimensions you need on their keys, WHERE and GROUP BY on dimension attributes, aggregate the measures.</p>
+  </div>
+  <div class="tip"><strong>The pattern:</strong> every warehouse query is the same shape. FROM the fact, JOIN the dimensions you need on their keys, WHERE on dimension attributes, GROUP BY dimension attributes, aggregate the measures. Once you see it you cannot unsee it.</div><pre><code class="language-sql">SELECT   &lt;dimension attributes&gt;, &lt;AGG&gt;(f.&lt;measure&gt;) AS &lt;name&gt;
+FROM     &lt;FactTable&gt; f
+JOIN     &lt;DimTable&gt; d1 ON f.&lt;Dim1Key&gt; = d1.&lt;Dim1Key&gt;
+JOIN     &lt;DimTable&gt; d2 ON f.&lt;Dim2Key&gt; = d2.&lt;Dim2Key&gt;     -- one join per dimension used
+WHERE    &lt;dimension attribute&gt; = &lt;value&gt;                  -- filter on dimensions
+GROUP BY &lt;the same dimension attributes&gt;
+ORDER BY &lt;attribute or measure&gt;;</code></pre><div class="tip"><strong>Two warnings for this database:</strong> the warehouse's internet sales run from 29 December 2010 to 28 January 2014, so 2010 and 2014 are a few days and one month, not years (drills 1, 3 and 9). And a query that touches two fact tables must aggregate each one first (drill 6).</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#drill">Drill</a> <span>11</span></li><li><a href="#self-test">Self-test</a> <span>4</span></li></ol></div>
+  <section class="part" id="drill"><h2>Drill</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Revenue by year and quarter</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT d.CalendarYear, d.CalendarQuarter, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY d.CalendarYear, d.CalendarQuarter ORDER BY 1, 2;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The pattern in its simplest form: FROM the fact, JOIN DimDate on its key, GROUP BY two date attributes, SUM the measure. DimDate already holds CalendarYear and CalendarQuarter, so no DATEPART is needed. 14 quarters: the warehouse's sales start on 29 December 2010 and end on 28 January 2014, so 2010 Q4 (43,421) and 2014 Q1 (45,695) are only a few days or weeks of data. 2013 Q4 is the best quarter at 5.33 million.</p><p class="pin"><span aria-hidden="true">📍</span> The first and last rows of any time series are often partial periods. Check the date range before comparing them.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">14 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Revenue by product category</h3></div>
+        <pre><code class="language-sql">SELECT pc.EnglishProductCategoryName AS Category, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+JOIN DimProductSubcategory ps ON p.ProductSubcategoryKey = ps.ProductSubcategoryKey
+JOIN DimProductCategory pc ON ps.ProductCategoryKey = pc.ProductCategoryKey
+GROUP BY pc.EnglishProductCategoryName ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Bikes 28.32 million, Accessories 0.70 million, Clothing 0.34 million; together exactly the 29,358,677.22 total, so no sales were lost by the INNER JOINs. All three joins are on the dimension side: product to subcategory to category is a snowflake chain (Day 19). The fact table is read once.</p><p class="pin"><span aria-hidden="true">📍</span> Bikes are 96% of internet revenue. Reconcile category totals with the fact total to prove the joins dropped nothing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Revenue by country and year, as a pivot</h3></div>
+        <pre><code class="language-sql">SELECT g.EnglishCountryRegionName AS Country,
+       SUM(CASE WHEN d.CalendarYear = 2012 THEN f.SalesAmount ELSE 0 END) AS Y2012,
+       SUM(CASE WHEN d.CalendarYear = 2013 THEN f.SalesAmount ELSE 0 END) AS Y2013,
+       SUM(CASE WHEN d.CalendarYear = 2014 THEN f.SalesAmount ELSE 0 END) AS Y2014
+FROM FactInternetSales f
+JOIN DimCustomer c ON f.CustomerKey = c.CustomerKey
+JOIN DimGeography g ON c.GeographyKey = g.GeographyKey
+JOIN DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY g.EnglishCountryRegionName ORDER BY Country;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Six countries, one column per year built with conditional SUMs (Day 4). The United States leads 2013 with 5.46 million, Australia is second with 4.34 million. Country lives on DimGeography, reached through DimCustomer. The hard-coded columns miss 2010 and 2011 completely (7.1 million of revenue), and 2014 is only January. In SQL the columns are fixed when you write the query; a Power BI matrix creates one column per year it finds.</p><p class="pin"><span aria-hidden="true">📍</span> A manual pivot only shows the years you typed. Add a total column or check the grand total so missing years are noticed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Customer demographics</h3></div>
+        <pre><code class="language-sql">SELECT c.Gender, c.MaritalStatus, c.EnglishEducation, COUNT(DISTINCT f.CustomerKey) AS Customers, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN DimCustomer c ON f.CustomerKey = c.CustomerKey
+GROUP BY c.Gender, c.MaritalStatus, c.EnglishEducation ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>20 groups (2 genders x 2 marital statuses x 5 education levels). Married men with a bachelor's degree are the top group: 1,634 customers, 2.76 million. COUNT(DISTINCT f.CustomerKey) counts customers, not order lines. In the OLTP database, gender, marital status and education are buried in an XML column (Person.Person.Demographics); the warehouse flattened them into plain columns at load time.</p><p class="pin"><span aria-hidden="true">📍</span> One join for a demographic report. The hard work was done once, when DimCustomer was built.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">20 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Weekday vs weekend sales</h3></div>
+        <pre><code class="language-sql">SELECT CASE WHEN d.DayNumberOfWeek IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS DayType, COUNT(*) AS Lines, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY CASE WHEN d.DayNumberOfWeek IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>In DimDate, DayNumberOfWeek 1 is Sunday and 7 is Saturday, so (1, 7) is the weekend. Weekdays: 43,320 lines and 21.12 million; weekend: 17,078 lines and 8.24 million. Per day that is 4.22 million per weekday and 4.12 million per weekend day: almost the same, so online buying does not depend on the day. The GROUP BY repeats the CASE because the alias is not visible to GROUP BY (Day 6).</p><p class="pin"><span aria-hidden="true">📍</span> Compare per-day averages, not totals: there are five weekdays and two weekend days. Check what 1 and 7 mean in your date table before you trust it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Internet vs reseller: two facts, same dimension</h3></div>
+        <pre><code class="language-sql">SELECT 'Internet' AS Channel, d.CalendarYear, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f JOIN DimDate d ON f.OrderDateKey = d.DateKey GROUP BY d.CalendarYear
+UNION ALL
+SELECT 'Reseller', d.CalendarYear, SUM(f.SalesAmount)
+FROM FactResellerSales f JOIN DimDate d ON f.OrderDateKey = d.DateKey GROUP BY d.CalendarYear
+ORDER BY CalendarYear, Channel;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Each fact is aggregated to year first, then the two small results are stacked. Reseller sales are bigger every year (33.6 million vs 16.4 million in 2013), and resellers have no 2014 row. Joining the two facts directly on date would multiply every internet line by every reseller line on the same day. Because both facts use the same DimDate, &quot;year&quot; means the same thing on both sides: a conformed dimension (Day 19).</p><p class="pin"><span aria-hidden="true">📍</span> Aggregate each fact to the shared grain, then combine. Never join two fact tables row to row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">9 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. Margin by product</h3></div>
+        <pre><code class="language-sql">SELECT p.EnglishProductName, SUM(f.SalesAmount) AS Revenue, SUM(f.TotalProductCost) AS Cost,
+       SUM(f.SalesAmount - f.TotalProductCost) AS Margin,
+       SUM(f.SalesAmount - f.TotalProductCost) / SUM(f.SalesAmount) * 100 AS MarginPct
+FROM FactInternetSales f JOIN DimProduct p ON f.ProductKey = p.ProductKey
+GROUP BY p.EnglishProductName HAVING SUM(f.SalesAmount) &gt; 100000 ORDER BY MarginPct DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>53 products sold more than 100,000. Margin is computed per row (SalesAmount minus TotalProductCost), then summed: both are additive, so the difference is too. MarginPct is a ratio, so it is computed from the sums, never averaged from row percentages. Mountain-200 bikes earn the best margin (about 45.6%), the Road-150 about 39.3%. Grouping by name merges the history versions of a product (Day 16) into one row, which is what you want here.</p><p class="pin"><span aria-hidden="true">📍</span> Additive measures can be combined row by row; ratios must be rebuilt from the totals.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">53 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Role-playing dimension: DimDate three times</h3></div>
+        <pre><code class="language-sql">SELECT TOP 10 f.SalesOrderNumber, od.FullDateAlternateKey AS Ordered, sd.FullDateAlternateKey AS Shipped, dd.FullDateAlternateKey AS Due,
+       DATEDIFF(day, od.FullDateAlternateKey, sd.FullDateAlternateKey) AS DaysToShip
+FROM FactInternetSales f
+JOIN DimDate od ON f.OrderDateKey = od.DateKey
+JOIN DimDate sd ON f.ShipDateKey = sd.DateKey
+JOIN DimDate dd ON f.DueDateKey = dd.DateKey;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One DimDate table, joined three times with three aliases (od, sd, dd), plays three roles: order date, ship date and due date. Every order shown ships 7 days after it is ordered and is due 12 days after. TOP 10 without ORDER BY returns whichever rows SQL Server reads first, here the earliest orders.</p><p class="pin"><span aria-hidden="true">📍</span> Same table, three aliases, three meanings. In Power BI only one relationship can be active, so you use USERELATIONSHIP or one date table per role.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. Year-over-year growth with LAG</h3></div>
+        <pre><code class="language-sql">WITH Yearly AS (
+    SELECT d.CalendarYear, SUM(f.SalesAmount) AS Revenue
+    FROM FactInternetSales f JOIN DimDate d ON f.OrderDateKey = d.DateKey GROUP BY d.CalendarYear
+)
+SELECT CalendarYear, Revenue, LAG(Revenue) OVER (ORDER BY CalendarYear) AS PrevYear,
+       (Revenue - LAG(Revenue) OVER (ORDER BY CalendarYear)) / LAG(Revenue) OVER (ORDER BY CalendarYear) * 100 AS GrowthPct
+FROM Yearly;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The CTE aggregates to one row per year, then LAG (Day 8) fetches the previous year's revenue. 2012 fell 17.4% and 2013 grew 179.9%. The 2011 figure (+16,195%) and the 2014 figure (-99.7%) are meaningless: 2010 has only 3 days of sales (29 to 31 December) and 2014 only 28 days. The SQL is right; the comparison is not.</p><p class="pin"><span aria-hidden="true">📍</span> Before quoting growth, check that both periods are complete. Partial years make huge, false percentages.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10a. Category revenue on the warehouse, with statistics</h3></div>
+        <pre><code class="language-sql">SET STATISTICS IO ON; SET STATISTICS TIME ON;
+SELECT pc.EnglishProductCategoryName AS Category, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+JOIN DimProductSubcategory ps ON p.ProductSubcategoryKey = ps.ProductSubcategoryKey
+JOIN DimProductCategory pc ON ps.ProductCategoryKey = pc.ProductCategoryKey
+GROUP BY pc.EnglishProductCategoryName ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Drill 2 again with statistics on; the Messages tab shows the cost. FactInternetSales is one 1,249-page scan, DimProduct 253 pages (it is wide: descriptions in eight languages), the category tables a few pages. When I ran it, CPU time was 16 ms and elapsed time 27 ms.</p><p class="pin"><span aria-hidden="true">📍</span> Three joins, no filter: everything the report needs is already in the fact and its dimensions.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: logical reads and execution times</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>10b. The same question on the OLTP database</h3></div>
+        <pre><code class="language-sql">USE AdventureWorks2022;
+SET STATISTICS IO ON; SET STATISTICS TIME ON;
+SELECT pc.Name AS Category, SUM(d.LineTotal) AS Revenue
+FROM Sales.SalesOrderDetail d
+JOIN Production.Product p ON d.ProductID = p.ProductID
+JOIN Production.ProductSubcategory ps ON p.ProductSubcategoryID = ps.ProductSubcategoryID
+JOIN Production.ProductCategory pc ON ps.ProductCategoryID = pc.ProductCategoryID
+JOIN Sales.SalesOrderHeader h ON d.SalesOrderID = h.SalesOrderID
+WHERE h.OnlineOrderFlag = 1
+GROUP BY pc.Name ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Same three totals. The OLTP version needs a fourth join, to SalesOrderHeader, only to filter online orders, because SalesOrderDetail mixes online and reseller lines (121,317 of them): 1,238 pages of detail plus 686 pages of header. When I ran it, CPU time was 110 ms and elapsed time 142 ms, roughly five times the warehouse query. On 120,000 rows both are fast; the gap grows with the data, and the warehouse query is also the easier one to write correctly.</p><p class="pin"><span aria-hidden="true">📍</span> The warehouse wins twice: less work for the server and fewer joins (and filters) for the person writing the query.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab: logical reads and execution times</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="self-test"><h2>Self-test</h2>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>S1. Revenue by month for Bikes in Australia</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT d.CalendarYear, d.MonthNumberOfYear, d.EnglishMonthName, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimDate d ON f.OrderDateKey = d.DateKey
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+JOIN DimProductSubcategory ps ON p.ProductSubcategoryKey = ps.ProductSubcategoryKey
+JOIN DimProductCategory pc ON ps.ProductCategoryKey = pc.ProductCategoryKey
+JOIN DimCustomer c ON f.CustomerKey = c.CustomerKey
+JOIN DimGeography g ON c.GeographyKey = g.GeographyKey
+WHERE pc.EnglishProductCategoryName = 'Bikes' AND g.EnglishCountryRegionName = 'Australia'
+GROUP BY d.CalendarYear, d.MonthNumberOfYear, d.EnglishMonthName
+ORDER BY d.CalendarYear, d.MonthNumberOfYear;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>37 months, December 2010 to December 2013 (Australia bought no bikes online in January 2014). The template filled in: WHERE on two dimension attributes (category, country), GROUP BY three date attributes, SUM one measure. MonthNumberOfYear is grouped and sorted so January comes before February; sorting by EnglishMonthName would put April first.</p><p class="pin"><span aria-hidden="true">📍</span> Six joins, but every one is fact to dimension or dimension to dimension. The pattern does not change as the question grows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">37 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>S2. Distinct customers per education level</h3></div>
+        <pre><code class="language-sql">SELECT c.EnglishEducation, COUNT(DISTINCT f.CustomerKey) AS Customers
+FROM FactInternetSales f JOIN DimCustomer c ON f.CustomerKey = c.CustomerKey
+GROUP BY c.EnglishEducation ORDER BY Customers DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Bachelors 5,356, Partial College 5,064, High School 3,294, Graduate Degree 3,189, Partial High School 1,581: 18,484 in total, every customer exactly once. COUNT(*) would count order lines (60,398) instead of people.</p><p class="pin"><span aria-hidden="true">📍</span> &quot;How many customers&quot; needs COUNT(DISTINCT key) on a fact; COUNT(*) counts rows at the fact's grain.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>S3. Average days to ship per year</h3></div>
+        <pre><code class="language-sql">SELECT d.CalendarYear, AVG(CAST(DATEDIFF(day, od.FullDateAlternateKey, sd.FullDateAlternateKey) AS DECIMAL(5,2))) AS AvgDaysToShip, COUNT(*) AS Lines
+FROM FactInternetSales f
+JOIN DimDate od ON f.OrderDateKey = od.DateKey
+JOIN DimDate sd ON f.ShipDateKey = sd.DateKey
+JOIN DimDate d ON f.OrderDateKey = d.DateKey
+GROUP BY d.CalendarYear ORDER BY d.CalendarYear;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Exactly 7.00 days in every year, because every internet order in the sample ships 7 days after it is ordered (the minimum and maximum are both 7). The order-date role is joined twice here, once for the date value and once for the year; od.CalendarYear would do the same job with one join less.</p><p class="pin"><span aria-hidden="true">📍</span> Sample data is often too regular. A real business would show a spread here, and you would report it with a median or a histogram too.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>S4. Which reseller business type buys the most</h3></div>
+        <pre><code class="language-sql">SELECT r.BusinessType, COUNT(DISTINCT f.ResellerKey) AS Resellers, SUM(f.SalesAmount) AS Revenue,
+       SUM(f.SalesAmount) / COUNT(DISTINCT f.ResellerKey) AS RevenuePerReseller
+FROM FactResellerSales f JOIN DimReseller r ON f.ResellerKey = r.ResellerKey
+GROUP BY r.BusinessType ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Warehouses buy the most: 38.73 million from 219 resellers (176,835 each). Value Added Resellers are close behind at 34.97 million. Specialty Bike Shops are almost as many (200) but buy only 6.76 million, 33,781 each. &quot;Buys the most&quot; can mean the total or the average per reseller; the query shows both.</p><p class="pin"><span aria-hidden="true">📍</span> When a question says &quot;most&quot;, show the total and the per-member average: they can rank differently.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Written exercise: drill 3 in Power BI, with no SQL</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Step</th><th>What to do</th><th>Which SQL it replaces</th></tr></thead><tbody><tr><td>1. Get data</td><td>Home > Get data > SQL Server, database AdventureWorksDW2022. Tick FactInternetSales, DimCustomer, DimGeography and DimDate, then Load.</td><td>The FROM list</td></tr><tr><td>2. Check the model</td><td>Model view. Power BI reads the foreign keys and draws the relationships: FactInternetSales[CustomerKey] to DimCustomer, DimCustomer[GeographyKey] to DimGeography, FactInternetSales[OrderDateKey] to DimDate (active; DueDateKey and ShipDateKey come in as inactive, dotted lines).</td><td>The three JOINs</td></tr><tr><td>3. Add a Matrix visual</td><td>Report view > Visualizations > Matrix.</td><td>The pivot shape</td></tr><tr><td>4. Rows</td><td>Drag DimGeography[EnglishCountryRegionName] to Rows.</td><td>GROUP BY country</td></tr><tr><td>5. Columns</td><td>Drag DimDate[CalendarYear] to Columns. Power BI makes one column per year it finds (2010 to 2014), with no hard-coded CASE per year.</td><td>The three SUM(CASE WHEN year ...) columns</td></tr><tr><td>6. Values</td><td>Drag FactInternetSales[SalesAmount] to Values (summarised as Sum), or a measure Revenue = SUM(FactInternetSales[SalesAmount]).</td><td>SUM(f.SalesAmount)</td></tr><tr><td>7. Optional filter</td><td>Filters pane > CalendarYear, tick 2012, 2013 and 2014 to match the SQL exactly.</td><td>Limiting to three years</td></tr></tbody></table></div><div class="tip"><strong>Why the warehouse is shaped this way:</strong> every field the user drags to Rows, Columns or a slicer is a dimension attribute, every value is a fact measure, and the relationships are the joins written once in the model. The star turns "write a query" into "drag three fields".</div><h2>Self-test: answers</h2><div class="tip"><strong>The pattern from memory:</strong> see the template at the top of the page: SELECT dimension attributes and aggregated measures, FROM the fact, JOIN each dimension on its key, WHERE on dimension attributes, GROUP BY the same attributes.</div><div class="tip"><strong>Revenue by month for Bikes in Australia</strong> (query S1): six joins, WHERE category = Bikes AND country = Australia, GROUP BY year and month number. 37 months from December 2010 to December 2013.<br><br><strong>Distinct customers per education level</strong> (S2): COUNT(DISTINCT f.CustomerKey) grouped by EnglishEducation. Bachelors 5,356, Partial College 5,064, High School 3,294, Graduate Degree 3,189, Partial High School 1,581; together all 18,484 customers.<br><br><strong>Average days to ship per year</strong> (S3): DimDate joined as order date and as ship date, AVG of DATEDIFF. Exactly 7.00 in every year: every internet order in the sample ships in 7 days.<br><br><strong>Which reseller business type buys the most</strong> (S4): Warehouse, 38.73 million from 219 resellers (176,835 each), ahead of Value Added Reseller (34.97 million) and Specialty Bike Shop (6.76 million, 33,781 each).</div>
+  <nav class="pager"><a href="../day17/">← Day 17: Identify facts and dimensions from sample data</a><a href="../day19/">Day 19: Star schema and snowflake schema →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -36,6 +36,9 @@ Run against AdventureWorksDW2022, Microsoft's warehouse version of the same samp
 |---|---|---|---|
 | [15](day15/) | What a warehouse is: OLTP vs OLAP | Table counts (72 vs 31), Dim and Fact naming, the same revenue question in both databases and why the answers differ, five joins vs one for a customer's country, wide dimensions, OLTP-to-warehouse table pairs with matching row counts | 10 |
 | [16](day16/) | Fact tables vs dimension tables | Fact and dimension anatomy from INFORMATION_SCHEMA, proving the grain, surrogate vs natural keys and product history rows, orphan checks, additive, semi-additive and non-additive measures, factless facts, foreign keys from the system catalog | 19 |
+| [17](day17/) | Identify facts and dimensions | The four modelling questions applied to sales (compared with FactInternetSales), HR (two facts, and why the warehouse has no HR fact) and a new ride-sharing dataset, built in AWPractice as a working star with six dimensions and FactRide | 28 |
+| [18](day18/) | Reporting queries on the warehouse | The fact-join-group pattern: revenue by quarter, category, country pivot, demographics, weekday vs weekend, two facts combined by aggregating first, margin, role-playing dates, year-over-year growth, warehouse vs OLTP timing, and a Power BI walkthrough | 15 |
+| [19](day19/) | Star and snowflake schemas | Foreign keys as the schema diagram, the snowflake chains, a flattened product view and its execution plan, conformed DimDate, SSMS database diagrams, and the ride model built both ways | 15 |
 
 ## The chain: SQL Server → SSIS → Power BI
 
@@ -57,6 +60,10 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **The warehouse's dates are shifted.** FactInternetSales matches the OLTP online orders to the cent (29,358,677.2207), but its order dates run from 29 Dec 2010 to 28 Jan 2014 instead of 31 May 2011 to 30 Jun 2014, so per-year figures differ between the two databases (Day 15).
 - **`SUM(UnitPrice)` looks right in FactInternetSales by accident.** Every internet order line has quantity 1, so it equals revenue; in FactResellerSales it gives 27.0M against 80.5M real revenue (Day 16).
 - **200 of 606 DimProduct rows have an EndDate before their StartDate.** Use `Status = 'Current'` / `EndDate IS NULL` to find the current version, not the date order (Day 16).
+- **The warehouse allocates tax and freight to order lines.** Tax adds back up exactly; freight comes out 1.94 higher than the OLTP total because of rounding (Day 17).
+- **DimEmployee keeps only the latest pay rate.** Its history rows match the five department transfers, but the 26 earlier pay rates are not stored anywhere in the warehouse (Day 17).
+- **A view does not remove snowflake joins.** The flattened product view still joins four tables, and its LEFT JOINs make the plan about 57% more expensive than the three explicit inner joins (Day 19).
+- **DimCustomer uses only 336 of DimGeography's 655 rows**, about 55 customers per geography, not the 28 the syllabus estimates (Day 19).
 
 ## Structure
 
