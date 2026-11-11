@@ -39,6 +39,10 @@ Run against AdventureWorksDW2022, Microsoft's warehouse version of the same samp
 | [17](day17/) | Identify facts and dimensions | The four modelling questions applied to sales (compared with FactInternetSales), HR (two facts, and why the warehouse has no HR fact) and a new ride-sharing dataset, built in AWPractice as a working star with six dimensions and FactRide | 28 |
 | [18](day18/) | Reporting queries on the warehouse | The fact-join-group pattern: revenue by quarter, category, country pivot, demographics, weekday vs weekend, two facts combined by aggregating first, margin, role-playing dates, year-over-year growth, warehouse vs OLTP timing, and a Power BI walkthrough | 15 |
 | [19](day19/) | Star and snowflake schemas | Foreign keys as the schema diagram, the snowflake chains, a flattened product view and its execution plan, conformed DimDate, SSMS database diagrams, and the ride model built both ways | 15 |
+| [20](day20/) | Slowly changing dimensions, the date dimension, surrogate keys | Type 2 product history in the warehouse, converting the ride model's DimRider to Type 2 (and the UNIQUE constraint and half-committed transaction that broke the first attempt), Type 1 vs Type 2 side by side, building a 2026 DimDate with fiscal periods, and a natural-key join that triples revenue | 20 |
+| [21](day21/) | Week 3 assessment | Eight concept answers, five warehouse queries (category pivot, top cities, average order value, two facts per quarter, revenue per Type 2 version), the hospital star built as tables, and the update to my instructor | 6 |
+
+**New to data warehousing?** Start with [dw/notes.md](dw/notes.md): the whole week explained from zero, with every term defined, real results, diagrams and a self-test. The SQL for each day is in [dw/sql/](dw/sql/), and [dw/dimdate.sql](dw/dimdate.sql) builds a reusable date dimension.
 
 ## The chain: SQL Server → SSIS → Power BI
 
@@ -64,6 +68,8 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **DimEmployee keeps only the latest pay rate.** Its history rows match the five department transfers, but the 26 earlier pay rates are not stored anywhere in the warehouse (Day 17).
 - **A view does not remove snowflake joins.** The flattened product view still joins four tables, and its LEFT JOINs make the plan about 57% more expensive than the three explicit inner joins (Day 19).
 - **DimCustomer uses only 336 of DimGeography's 655 rows**, about 55 customers per geography, not the 28 the syllabus estimates (Day 19).
+- **Turning a dimension into Type 2 breaks its UNIQUE rule.** The rider table's UNIQUE constraint on the phone number blocked the second row; it has to become "one current row per phone" (a filtered unique index). Without `SET XACT_ABORT ON`, the failed change still committed its UPDATE and left the rider with no current row (Day 20).
+- **Joining a Type 2 dimension on its natural key multiplies the facts:** 867 lines and three times the revenue for product FR-M94B-38 instead of 289 (Day 20).
 
 ## Structure
 
@@ -73,5 +79,9 @@ dayN/index.html   one page per day: query, explanation, screenshot
 dayN/shots/       screenshots (SSMS, Visual Studio, Power BI)
 ssis/AWReporting/ SSIS project: Visual Studio solution and .dtsx packages
 pbi/              Power BI report (.pbix)
+dw/notes.md       data warehousing explained from zero (Week 3)
+dw/sql/           dayNN.sql: every query of Days 15 to 21
+dw/dimdate.sql    reusable date dimension build script
+dw/images/        SSMS star and snowflake diagrams
 assets/           stylesheet and script
 ```

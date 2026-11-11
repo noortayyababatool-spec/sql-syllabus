@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 21: Week 3 assessment and instructor update · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/" aria-current="page">Day 21</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 21</p>
+  <h1>Day 21: Week 3 assessment and instructor update</h1>
+  <p class="meta">Tue 27 October 2026 · 6 queries · run on AdventureWorksDW2022 and AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> answer 15 questions on warehousing (concepts, queries, modelling) and report the week to my instructor.</p>
+    <p><strong>Format:</strong> 60 minutes, notes closed, 12 of 15 to pass: 8 concepts, 5 queries on AdventureWorksDW2022, 2 modelling questions.</p>
+  </div>
+  <div class="tip"><strong>The assessment:</strong> 15 questions, 60 minutes, notes closed, 12 correct to pass. Questions 1 to 8 are concepts (answered in writing below the queries), 9 to 13 are SQL against AdventureWorksDW2022 (the queries on this page, each run in SSMS), and 14 and 15 are modelling (the hospital star, written below and built as tables in step 6). Every answer here was checked against the database.</div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#assessment-queries-questions-9-to-13">Assessment queries (questions 9 to 13)</a> <span>5</span></li><li><a href="#modelling-questions-14-and-15-the-hospital-star-built-as-tables">Modelling (questions 14 and 15): the hospital star, built as tables</a> <span>1</span></li></ol></div>
+  <section class="part" id="assessment-queries-questions-9-to-13"><h2>Assessment queries (questions 9 to 13)</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>Q9. Revenue by product category by calendar year, years as columns</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT Category, [2010], [2011], [2012], [2013], [2014]
+FROM (SELECT pc.EnglishProductCategoryName AS Category, d.CalendarYear, f.SalesAmount
+      FROM FactInternetSales f
+      JOIN DimDate d                ON d.DateKey = f.OrderDateKey
+      JOIN DimProduct p             ON p.ProductKey = f.ProductKey
+      JOIN DimProductSubcategory ps ON ps.ProductSubcategoryKey = p.ProductSubcategoryKey
+      JOIN DimProductCategory pc    ON pc.ProductCategoryKey = ps.ProductCategoryKey) AS src
+PIVOT (SUM(SalesAmount) FOR CalendarYear IN ([2010], [2011], [2012], [2013], [2014])) AS pv
+ORDER BY Category;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Internet sales. The inner query is the usual star pattern: fact, date dimension for the year, and the three-table product snowflake for the category. PIVOT then turns each year into a column (Day 6 did the same with SUM(CASE ...)). Bikes sell from 2010 to 2013 but not in January 2014. Accessories and Clothing only start in 2012, sell in large amounts only in 2013 (668,241.53 and 323,806.45), and are the only internet sales in January 2014. The empty cells are NULL, meaning no sales, not zero. 2010 (from 29 December) and 2014 (January only) are part-years because of the warehouse's shifted dates (Day 15).</p><p class="pin"><span aria-hidden="true">📍</span> Pivot = GROUP BY two attributes, then spread one of them across columns.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>Q10. Top 5 cities by internet sales revenue</h3></div>
+        <pre><code class="language-sql">SELECT TOP 5 g.City, g.StateProvinceName, g.EnglishCountryRegionName AS Country, SUM(f.SalesAmount) AS Revenue
+FROM FactInternetSales f
+JOIN DimCustomer c  ON c.CustomerKey = f.CustomerKey
+JOIN DimGeography g ON g.GeographyKey = c.GeographyKey
+GROUP BY g.City, g.StateProvinceName, g.EnglishCountryRegionName
+ORDER BY Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>London (802,810.30), Paris (539,725.80), then three Australian cities: Wollongong, Warrnambool and Bendigo. The city comes from DimGeography through DimCustomer (a snowflake chain, Day 19). The query groups by city, state and country together, because two different places can share a city name; grouping by name alone would merge them (the same lesson as grouping customers by name in Week 1).</p><p class="pin"><span aria-hidden="true">📍</span> Group by enough columns to identify the thing, not just its name.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>Q11. Average order value by education level and gender</h3></div>
+        <pre><code class="language-sql">SELECT c.EnglishEducation AS Education, c.Gender,
+       COUNT(DISTINCT f.SalesOrderNumber) AS Orders, SUM(f.SalesAmount) AS Revenue,
+       SUM(f.SalesAmount) / COUNT(DISTINCT f.SalesOrderNumber) AS AvgOrderValue
+FROM FactInternetSales f JOIN DimCustomer c ON c.CustomerKey = f.CustomerKey
+GROUP BY c.EnglishEducation, c.Gender
+ORDER BY Education, c.Gender;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>10 groups (5 education levels by 2 genders). FactInternetSales has one row per order line, so the number of orders is COUNT(DISTINCT SalesOrderNumber), not COUNT(*). AVG(SalesAmount) would give the average line, not the average order. Average order value is a non-additive measure (Day 16), so it is calculated from two additive ones: revenue divided by orders. Women with a bachelor's degree spend the most per order (1,221.41), and men with partial high school the least (726.63).</p><p class="pin"><span aria-hidden="true">📍</span> Ratios are computed from additive totals, never averaged from rows.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>Q12. Reseller vs internet revenue per quarter, in one result set</h3></div>
+        <pre><code class="language-sql">WITH i AS (SELECT d.CalendarYear, d.CalendarQuarter, SUM(f.SalesAmount) AS Internet
+           FROM FactInternetSales f JOIN DimDate d ON d.DateKey = f.OrderDateKey
+           GROUP BY d.CalendarYear, d.CalendarQuarter),
+     r AS (SELECT d.CalendarYear, d.CalendarQuarter, SUM(f.SalesAmount) AS Reseller
+           FROM FactResellerSales f JOIN DimDate d ON d.DateKey = f.OrderDateKey
+           GROUP BY d.CalendarYear, d.CalendarQuarter)
+SELECT COALESCE(i.CalendarYear, r.CalendarYear) AS Year, COALESCE(i.CalendarQuarter, r.CalendarQuarter) AS Qtr,
+       ISNULL(r.Reseller, 0) AS Reseller, ISNULL(i.Internet, 0) AS Internet
+FROM i FULL JOIN r ON r.CalendarYear = i.CalendarYear AND r.CalendarQuarter = i.CalendarQuarter
+ORDER BY Year, Qtr;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>14 quarters, Q4 2010 to Q1 2014. Each fact is aggregated to year and quarter first, in its own CTE, and only then are the two joined (Day 18 drill 6): joining the two facts row by row would multiply them. The join is a FULL JOIN because resellers sold nothing in Q1 2014; an INNER JOIN would drop that quarter and its 45,694.72 of internet revenue. Both facts use the same DimDate (a conformed dimension, Day 19), which is why &quot;2013 Q1&quot; means the same days on both sides. Resellers bring in more in every quarter but the last.</p><p class="pin"><span aria-hidden="true">📍</span> Two facts: aggregate each to the shared grain first, then join on the conformed dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">14 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>Q13. Product FR-M94B-38: revenue per price period (Type 2 rows)</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductKey, p.ListPrice, p.StartDate, p.Status,
+       MIN(d.FullDateAlternateKey) AS FirstSale, MAX(d.FullDateAlternateKey) AS LastSale,
+       COUNT(*) AS Lines, SUM(f.OrderQuantity) AS Units, SUM(f.SalesAmount) AS Revenue
+FROM FactResellerSales f
+JOIN DimProduct p ON p.ProductKey = f.ProductKey
+JOIN DimDate d    ON d.DateKey = f.OrderDateKey
+WHERE p.ProductAlternateKey = 'FR-M94B-38'
+GROUP BY p.ProductKey, p.ListPrice, p.StartDate, p.Status
+ORDER BY p.StartDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per version of the product: 92,196.85 at list price 1,191.17, then 195,814.70 at 1,226.91, then 213,776.64 at 1,349.60 (the current version). Grouping by the surrogate key splits the revenue by price period with no date logic, because each sale stores the key of the version in force when it was sold (Day 20). The sales fall in three separate blocks of about eleven months (late December to late November), each starting about six months before that version's StartDate: one more sign of the warehouse's shifted order dates. All sales are reseller sales; this frame was never sold online.</p><p class="pin"><span aria-hidden="true">📍</span> Group by the surrogate key to report &quot;per version&quot; of a Type 2 dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="modelling-questions-14-and-15-the-hospital-star-built-as-tables"><h2>Modelling (questions 14 and 15): the hospital star, built as tables</h2>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>Q14 and Q15. The hospital star schema in SQL</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+IF SCHEMA_ID('hosp') IS NULL EXEC('CREATE SCHEMA hosp');
+DROP TABLE IF EXISTS hosp.FactVisitProcedure, hosp.DimPatient, hosp.DimDoctor, hosp.DimDiagnosis, hosp.DimProcedure, hosp.DimInsurance;
+CREATE TABLE hosp.DimPatient   (PatientKey INT IDENTITY PRIMARY KEY, PatientID INT NOT NULL UNIQUE, PatientName VARCHAR(100), DateOfBirth DATE);
+CREATE TABLE hosp.DimDoctor    (DoctorKey INT IDENTITY PRIMARY KEY, DoctorID INT NOT NULL, DoctorName VARCHAR(100), Department VARCHAR(50),
+                                EffectiveFrom DATE NOT NULL, EffectiveTo DATE NULL, IsCurrent BIT NOT NULL DEFAULT 1);   -- Type 2
+CREATE TABLE hosp.DimDiagnosis (DiagnosisKey INT IDENTITY PRIMARY KEY, DiagnosisCode VARCHAR(10) NOT NULL UNIQUE, DiagnosisDescription VARCHAR(200));
+CREATE TABLE hosp.DimProcedure (ProcedureKey INT IDENTITY PRIMARY KEY, ProcedureCode VARCHAR(10) NOT NULL UNIQUE);
+CREATE TABLE hosp.DimInsurance (InsuranceKey INT IDENTITY PRIMARY KEY, InsuranceProvider VARCHAR(100) NOT NULL UNIQUE);
+CREATE TABLE hosp.FactVisitProcedure (
+    VisitID INT NOT NULL,                          -- degenerate dimension: the visit number itself
+    VisitDateKey INT NOT NULL,                     -- yyyymmdd, joins to the shared dbo.DimDate
+    VisitHour TINYINT NOT NULL,
+    PatientKey   INT NOT NULL REFERENCES hosp.DimPatient,
+    DoctorKey    INT NOT NULL REFERENCES hosp.DimDoctor,
+    DiagnosisKey INT NOT NULL REFERENCES hosp.DimDiagnosis,
+    ProcedureKey INT NOT NULL REFERENCES hosp.DimProcedure,
+    InsuranceKey INT NOT NULL REFERENCES hosp.DimInsurance,
+    DurationMinutes INT, BillAmount DECIMAL(12, 2), PaidAmount DECIMAL(12, 2),
+    PRIMARY KEY (VisitID, ProcedureKey));          -- the grain: one procedure in one visit
+SELECT OBJECT_NAME(fk.parent_object_id) AS FromTable, OBJECT_NAME(fk.referenced_object_id) AS ToDimension
+FROM sys.foreign_keys fk WHERE OBJECT_SCHEMA_NAME(fk.parent_object_id) = 'hosp' ORDER BY ToDimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The written model (below the queries) turned into tables, so the design is checked by SQL Server rather than only drawn. One fact, FactVisitProcedure, with five foreign keys to five dimensions, plus the shared date dimension through VisitDateKey. The result lists the five arms of the star, each one join from the fact. (The red &quot;11&quot; below the editor comes from IntelliSense, which does not know the new tables until its cache is refreshed; the status bar confirms the script ran successfully.) DimDoctor is the Type 2 dimension: it has EffectiveFrom, EffectiveTo and IsCurrent because a doctor can move department, and visits must stay with the department of the time. VisitDateKey has no foreign key on purpose: the Day 20 DimDate script drops and rebuilds dbo.DimDate, and a foreign key would block that.</p><p class="pin"><span aria-hidden="true">📍</span> A star you can CREATE is a star whose keys and grain have been thought through.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Concepts (questions 1 to 8)</h2><div class="tip"><strong>1. OLTP vs OLAP: purpose, shape, who uses each:</strong> OLTP (online transaction processing) systems run the business: they record each order, payment or visit as it happens, so they are normalised into many narrow tables (AdventureWorks2022 has 72) and handle many small reads and writes. Staff and applications use them. OLAP (online analytical processing) systems, such as a data warehouse, answer questions about the business: they are denormalised into a few fact and dimension tables (AdventureWorksDW2022 has 31) built for large reads and aggregation. Analysts, managers and BI tools like Power BI use them.</div><div class="tip"><strong>2. Fact table, dimension table, grain:</strong> A fact table records business events and their numbers (measures), with a foreign key to each dimension; it is long and narrow (FactInternetSales: one row per order line). A dimension table describes the who, what, where and when of those events with descriptive text used to filter and group (DimCustomer, DimProduct, DimDate); it is short and wide. The grain is the exact meaning of one fact row, such as "one product on one sales order line", and must be decided first, because every measure and dimension has to be true at that level.</div><div class="tip"><strong>3. Additive, semi-additive, non-additive, with examples:</strong> Additive measures can be summed across every dimension: SalesAmount in FactInternetSales. Semi-additive measures can be summed across some dimensions but not across time: UnitsBalance in FactProductInventory is a stock level, so you sum it across products but take the closing value, not the sum, across days. Non-additive measures cannot be summed at all: UnitPrice, or a ratio such as average order value or margin percentage, which must be recalculated from additive totals (Q11).</div><div class="tip"><strong>4. Star vs snowflake, and which AdventureWorksDW is:</strong> A star has each dimension as one flat, denormalised table joined directly to the fact: one join per dimension, simple for users and what Power BI expects. A snowflake normalises dimensions into chains (product to subcategory to category): less repeated text, more joins. AdventureWorksDW is a mix: every fact is the centre of a star, but product, geography and sales territory are snowflaked (Day 19).</div><div class="tip"><strong>5. Surrogate key vs natural key, and why facts store only surrogates:</strong> A natural key is the identifier from the source system (ProductAlternateKey, a phone number, a patient ID). A surrogate key is an integer the warehouse assigns itself (ProductKey). Facts store only surrogate keys because natural keys can change, be reused or clash between systems, and once a dimension keeps Type 2 history the natural key matches several rows: joining on it tripled the revenue for FR-M94B-38 (Day 20, step 20).</div><div class="tip"><strong>6. SCD Type 1 vs Type 2, with an example:</strong> Type 1 overwrites the old value and keeps no history: correcting the spelling of a rider's name. Type 2 closes the old row and inserts a new one with a new surrogate key and validity dates, so old facts keep the old value: when Ayesha moved from Lahore to Islamabad, her earlier rides stayed in Lahore (key 1) and later rides use the new row (key 6).</div><div class="tip"><strong>7. What a date dimension is and three things it saves you from:</strong> A table with one row per calendar day and pre-computed attributes (year, quarter, month name, weekday, weekend flag, fiscal period, holidays), joined to facts through an integer key like 20261030. It saves you from (1) writing YEAR(), DATENAME() and fiscal-year CASE logic in every query, and getting it wrong in some; (2) missing days in reports, because it contains days with no sales; (3) hard-coding holidays and company calendars, which become a column you can filter on.</div><div class="tip"><strong>8. What a conformed dimension is:</strong> A dimension shared by several fact tables with the same keys and the same meaning, so their results can be compared and combined. In AdventureWorksDW, DimDate is used by eight facts, which is why internet and reseller revenue could be placed side by side per quarter in Q12.</div><h2>Modelling (questions 14 and 15): the hospital visits</h2><div class="tip"><strong>Raw columns:</strong> VisitID, PatientID, PatientName, PatientDOB, DoctorID, DoctorName, Department, VisitDate, VisitTime, DiagnosisCode, DiagnosisDescription, ProcedureCode, DurationMinutes, BillAmount, InsuranceProvider, PaidAmount.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody><tr><td><strong>The fact</strong></td><td>A procedure performed during a hospital visit: FactVisitProcedure.</td></tr><tr><td><strong>The grain</strong></td><td>One row per procedure in one visit (VisitID + ProcedureCode). The raw data has one ProcedureCode per row, and a visit can include several procedures. VisitID stays in the fact as a <strong>degenerate dimension</strong>: it identifies the visit but has no attributes of its own.</td></tr><tr><td><strong>The measures</strong></td><td>DurationMinutes, BillAmount and PaidAmount, all additive. Outstanding amount (BillAmount minus PaidAmount) and payment rate (PaidAmount / BillAmount) are derived; the rate is non-additive. One check before loading: if BillAmount is per visit and repeated on every procedure row, summing it would count it several times, and it would belong in a separate visit-level fact.</td></tr><tr><td><strong>The dimensions</strong></td><td>1. DimPatient (PatientID, name, date of birth: age at visit is computed from it). 2. DimDoctor (DoctorID, name, department). 3. DimDate through VisitDateKey, with VisitHour in the fact for the time. 4. DimDiagnosis (code and description). 5. DimProcedure (code). 6. DimInsurance (provider): kept on the fact, so each visit records the insurer used at the time.</td></tr><tr><td><strong>Type 2</strong></td><td><strong>DimDoctor</strong>: a doctor can move department, and department reports must keep past visits in the department of the time. DimPatient is Type 1 (names are corrected, birth dates do not change); it would become Type 2 if address or city were added. Diagnosis, procedure and insurance codes are Type 1 (description corrections). DimDate is Type 0.</td></tr></tbody></table></div><pre><code class="language-plaintext">                       DimDate (shared, conformed)
+                       VisitDateKey + VisitHour
+                                 |
+   DimPatient -------- FactVisitProcedure -------- DimDoctor  (TYPE 2: Department)
+   PatientID, Name,    VisitID (degenerate)          DoctorID, Name, Department,
+   DateOfBirth         DurationMinutes               EffectiveFrom, EffectiveTo,
+                       BillAmount, PaidAmount        IsCurrent
+                        /           |          \
+             DimDiagnosis     DimProcedure     DimInsurance
+             Code, Description   Code          Provider</code></pre><h2>Update to my instructor (draft)</h2><div class="tip">Week complete: data warehousing (Days 15 to 21), including slowly changing dimensions, the date dimension and surrogate keys, which I studied ahead of the next week's design task. The written notes, the ride-sharing and hospital models, the SQL for every day and the DimDate build script are in the GitHub repository under <code>dw/</code>.<br><br>Two questions:<br>1. Is the team's warehouse a star or a snowflake, and could I look at its DimDate?<br>2. Is there a real dataset you would prefer me to design next week's star schema on, instead of a made-up one?</div>
+  <nav class="pager"><a href="../day20/">← Day 20: Slowly changing dimensions, the date dimension, surrogate keys</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

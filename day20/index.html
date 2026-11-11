@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 20: Slowly changing dimensions, the date dimension, surrogate keys · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/" aria-current="page">Day 20</a><a href="../day21/">Day 21</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 3 · Data Warehousing</a> / Day 20</p>
+  <h1>Day 20: Slowly changing dimensions, the date dimension, surrogate keys</h1>
+  <p class="meta">Mon 26 October 2026 · 20 queries · run on AdventureWorksDW2022 and AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> the three things that separate a textbook star from one that survives a year of real data.</p>
+    <p><strong>Read:</strong> Kimball Group &quot;Slowly changing dimension techniques&quot; (Types 0 to 7; Types 1 and 2 in depth), &quot;Calendar date dimensions&quot; and &quot;Dimension surrogate keys&quot;.</p>
+  </div>
+  <div class="tip"><strong>Why this day matters:</strong> a textbook star schema works on day one. These three ideas keep it working after a year of real data, when customers move, prices change and source systems renumber their records.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Idea</th><th>The problem it solves</th><th>In one line</th></tr></thead><tbody><tr><td><strong>Slowly changing dimension (SCD)</strong></td><td>A customer moves city. Should last year's sales show the old city or the new one?</td><td>Decide, per column, whether to overwrite (Type 1) or keep history (Type 2).</td></tr><tr><td><strong>Date dimension</strong></td><td>Every report needs year, month, weekday, fiscal period and holidays, and calculating them in every query is slow and error-prone.</td><td>One row per calendar day with every attribute pre-computed.</td></tr><tr><td><strong>Surrogate key</strong></td><td>Source IDs can change, be reused, clash between systems, or stop being unique once history is kept.</td><td>An integer the warehouse itself assigns; facts store only this.</td></tr></tbody></table></div><div class="tablewrap"><table class="map prose"><thead><tr><th></th><th>Type 1: overwrite</th><th>Type 2: add a new row</th></tr></thead><tbody><tr><td><strong>What happens</strong></td><td>UPDATE the existing row</td><td>Close the old row (end date, IsCurrent = 0) and INSERT a new row with a new surrogate key</td></tr><tr><td><strong>History</strong></td><td>Lost: old facts now show the new value</td><td>Kept: old facts still point at the old row</td></tr><tr><td><strong>Use it for</strong></td><td>Corrections, such as a misspelt name</td><td>Real changes that reports must respect, such as a move or a price change</td></tr><tr><td><strong>Example below</strong></td><td>Ayesha's name: "Ayesha" to "Ayesha Khan" (step 13)</td><td>Ayesha's city: Lahore to Islamabad (steps 7 to 12)</td></tr></tbody></table></div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#slowly-changing-dimensions-type-2-in-adventureworksdw">Slowly changing dimensions: Type 2 in AdventureWorksDW</a> <span>4</span></li><li><a href="#build-type-2-yourself-the-rider-dimension-in-awpractice">Build Type 2 yourself: the rider dimension in AWPractice</a> <span>9</span></li><li><a href="#the-date-dimension">The date dimension</a> <span>6</span></li><li><a href="#surrogate-keys-why-the-fact-never-stores-the-natural-key">Surrogate keys: why the fact never stores the natural key</a> <span>1</span></li></ol></div>
+  <section class="part" id="slowly-changing-dimensions-type-2-in-adventureworksdw"><h2>Slowly changing dimensions: Type 2 in AdventureWorksDW</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Type 2 in the wild: one product, three rows, three price periods</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT ProductKey, ProductAlternateKey, EnglishProductName, ListPrice, StartDate, EndDate, Status
+FROM DimProduct WHERE ProductAlternateKey = 'FR-M94B-38' ORDER BY StartDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>ProductAlternateKey FR-M94B-38 is the natural key: the product code the business uses. It appears three times, with three different surrogate keys (304, 305, 306) and three list prices (1,191.17, then 1,226.91, then 1,349.60). Each time the price changed, the warehouse did not overwrite the row: it added a new one. That is a Type 2 slowly changing dimension. Only the newest row has Status = 'Current' and no EndDate. The older rows' EndDates (2007 and 2008) come before their StartDates (2011 and 2012): the same data fault found on Day 16, so never trust the date order here.</p><p class="pin"><span aria-hidden="true">📍</span> Same product, three rows: the warehouse kept every price it ever had.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. The current row only</h3></div>
+        <pre><code class="language-sql">SELECT * FROM DimProduct WHERE ProductAlternateKey = 'FR-M94B-38' AND EndDate IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row: ProductKey 306, the version in force today. &quot;EndDate IS NULL&quot; (or Status = 'Current', or an IsCurrent flag in other warehouses) is how every Type 2 dimension marks the live row. Use it when the question is &quot;what is true now&quot;, such as today's price list.</p><p class="pin"><span aria-hidden="true">📍</span> Type 2 question one: what is true now? Filter on the open row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Each sale is joined to the price in force at the time</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductKey, p.ListPrice AS PriceAtTime, p.StartDate, p.EndDate, COUNT(*) AS Lines, SUM(f.SalesAmount) AS Revenue
+FROM FactResellerSales f JOIN DimProduct p ON f.ProductKey = p.ProductKey
+WHERE p.ProductAlternateKey = 'FR-M94B-38' GROUP BY p.ProductKey, p.ListPrice, p.StartDate, p.EndDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>289 sales lines in total, split by version: 71 lines (92,196.85) under key 304, 113 lines (195,814.70) under key 305 and 105 lines (213,776.64) under key 306. No date logic is needed: when a sale was loaded, the load stored the surrogate key of the version in force that day, so a plain join on ProductKey returns the price at the time. Resellers paid exactly 60% of each version's list price (714.70, 736.15, 809.76 per unit).</p><p class="pin"><span aria-hidden="true">📍</span> Type 2 question two: what was true then? The surrogate key in the fact already answers it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. How much history does DimProduct keep?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS DimRows, COUNT(DISTINCT ProductAlternateKey) AS Products,
+       SUM(CASE WHEN EndDate IS NULL THEN 1 ELSE 0 END) AS OpenRows,
+       COUNT(*) - COUNT(DISTINCT ProductAlternateKey) AS ExtraHistoryRows
+FROM DimProduct;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>606 rows describe 504 real products, so 102 rows exist only to keep history. 406 rows are open (no EndDate). The other 98 products have no open row at all: they were discontinued, and their last version was closed. This is also why Day 16 found duplicate ProductAlternateKeys: they are not duplicates, they are versions.</p><p class="pin"><span aria-hidden="true">📍</span> Duplicates of the natural key in a dimension usually mean Type 2 history, not bad data.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="build-type-2-yourself-the-rider-dimension-in-awpractice"><h2>Build Type 2 yourself: the rider dimension in AWPractice</h2>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. The syllabus script first: CREATE TABLE DimRider</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+CREATE TABLE DimRider (
+    RiderKey INT IDENTITY PRIMARY KEY,        -- surrogate
+    RiderPhone VARCHAR(20) NOT NULL,           -- natural key
+    RiderName VARCHAR(50), RiderCity VARCHAR(50),
+    EffectiveFrom DATE NOT NULL, EffectiveTo DATE NULL, IsCurrent BIT NOT NULL DEFAULT 1
+);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>It fails: DimRider already exists, because Day 17 built it for the ride-sharing star, and FactRide points at it with a foreign key. Dropping it would break FactRide. A real warehouse has the same problem when it decides a dimension needs history after it is already in use, so the next step changes the existing table instead.</p><p class="pin"><span aria-hidden="true">📍</span> Read the error, then adapt: the table is already there, so alter it rather than recreate it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab (error, as expected)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Turn the existing DimRider into a Type 2 dimension</h3></div>
+        <pre><code class="language-sql">IF COL_LENGTH('dbo.DimRider', 'IsCurrent') IS NULL          -- only the first time (re-runnable)
+    ALTER TABLE dbo.DimRider ADD
+        EffectiveFrom DATE NOT NULL CONSTRAINT DF_DimRider_From DEFAULT '2026-01-01',
+        EffectiveTo   DATE NULL,
+        IsCurrent     BIT  NOT NULL CONSTRAINT DF_DimRider_Current DEFAULT 1;
+SELECT * FROM DimRider;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three new columns. Because EffectiveFrom and IsCurrent are NOT NULL with a DEFAULT, SQL Server fills them in for the three existing riders: every row is valid from 1 January 2026 and is the current row. EffectiveTo is empty (NULL), meaning &quot;still valid&quot;. RiderKey is still the IDENTITY surrogate key from Day 17, and RiderPhone is the natural key that identifies a person. The IF line makes the script safe to run twice.</p><p class="pin"><span aria-hidden="true">📍</span> A Type 2 dimension needs three things: a valid-from date, a valid-to date and a current flag.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. Ayesha moves to Islamabad on 15 October: close the old row, add a new one</h3></div>
+        <pre><code class="language-sql">SET XACT_ABORT ON;     -- any error cancels the whole transaction
+IF NOT EXISTS (SELECT 1 FROM DimRider WHERE RiderPhone = '0300-1111111' AND RiderCity = 'Islamabad')
+BEGIN
+    BEGIN TRANSACTION;
+    UPDATE DimRider SET EffectiveTo = '2026-10-14', IsCurrent = 0
+    WHERE RiderPhone = '0300-1111111' AND IsCurrent = 1;
+    INSERT INTO DimRider (RiderPhone, RiderName, RiderCity, EffectiveFrom)
+    VALUES ('0300-1111111', 'Ayesha', 'Islamabad', '2026-10-15');
+    COMMIT;
+END
+SELECT * FROM DimRider ORDER BY RiderPhone, EffectiveFrom;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>It fails: &quot;Violation of UNIQUE KEY constraint&quot;. On Day 17, RiderPhone was given a UNIQUE constraint, which was right while the table held one row per person. A Type 2 dimension must allow several rows per person, so that rule now blocks the change. The first time I ran this without SET XACT_ABORT ON, the UPDATE succeeded, the INSERT failed and COMMIT saved the UPDATE anyway: Ayesha was left with no current row at all. Here the Messages tab shows &quot;(1 row affected)&quot; for the UPDATE, then the error from the INSERT. With XACT_ABORT ON, the error rolled back the whole transaction, including that UPDATE, so the table is unchanged.</p><p class="pin"><span aria-hidden="true">📍</span> Making a dimension Type 2 changes its rules: the natural key is no longer unique.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Messages tab (error, as expected; nothing was changed)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Replace the rule: one CURRENT row per phone number</h3></div>
+        <pre><code class="language-sql">DECLARE @uq sysname = (SELECT name FROM sys.key_constraints
+                       WHERE parent_object_id = OBJECT_ID('dbo.DimRider') AND type = 'UQ');
+IF @uq IS NOT NULL EXEC('ALTER TABLE dbo.DimRider DROP CONSTRAINT ' + @uq);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_DimRider_CurrentPhone')
+    CREATE UNIQUE INDEX UX_DimRider_CurrentPhone ON dbo.DimRider (RiderPhone) WHERE IsCurrent = 1;
+SELECT name, type_desc, is_unique, filter_definition FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.DimRider');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 17's constraint had a name SQL Server made up (UQ__DimRider__08B9...), so the script looks it up in sys.key_constraints and drops it with dynamic SQL (Day 11). In its place goes a filtered unique index: RiderPhone must be unique only among rows WHERE IsCurrent = 1. A rider may have any number of closed rows but never two current ones, which is exactly the rule a Type 2 dimension needs. The table now has two indexes: the primary key on RiderKey and the new filtered index.</p><p class="pin"><span aria-hidden="true">📍</span> A Type 2 dimension's rule is &quot;one current row per natural key&quot;, not &quot;one row per natural key&quot;.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. The same change again: now it works</h3></div>
+        <pre><code class="language-sql">SET XACT_ABORT ON;     -- any error cancels the whole transaction
+IF NOT EXISTS (SELECT 1 FROM DimRider WHERE RiderPhone = '0300-1111111' AND RiderCity = 'Islamabad')
+BEGIN
+    BEGIN TRANSACTION;
+    UPDATE DimRider SET EffectiveTo = '2026-10-14', IsCurrent = 0
+    WHERE RiderPhone = '0300-1111111' AND IsCurrent = 1;
+    INSERT INTO DimRider (RiderPhone, RiderName, RiderCity, EffectiveFrom)
+    VALUES ('0300-1111111', 'Ayesha', 'Islamabad', '2026-10-15');
+    COMMIT;
+END
+SELECT * FROM DimRider ORDER BY RiderPhone, EffectiveFrom;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Ayesha now has two rows. RiderKey 1 (Lahore) is closed: valid until 14 October, IsCurrent 0. Her new row (Islamabad) is valid from 15 October with IsCurrent 1 and no EffectiveTo. Its key is 6, not 2 as in the syllabus: Bilal and Sara already hold 2 and 3, and the failed attempts in step 7 used up identity numbers (IDENTITY never gives a number back, even after a rollback). The UPDATE and INSERT ran as one transaction (Day 9).</p><p class="pin"><span aria-hidden="true">📍</span> Type 2 change = UPDATE the old row to close it + INSERT a new row. Never overwrite.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. Lookup at load time: which RiderKey does a new ride get?</h3></div>
+        <pre><code class="language-sql">SELECT r.RideDate, d.RiderKey, d.RiderCity
+FROM (VALUES (CAST('2026-10-01' AS DATE)), ('2026-10-20')) AS r(RideDate)
+JOIN DimRider d ON d.RiderPhone = '0300-1111111'
+ AND r.RideDate BETWEEN d.EffectiveFrom AND ISNULL(d.EffectiveTo, '9999-12-31');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The ETL receives a ride with a phone number and a date, and must store a RiderKey. The BETWEEN finds the version valid on the ride date: a ride on 1 October gets RiderKey 1 (Lahore) and a ride on 20 October gets RiderKey 6 (Islamabad). ISNULL turns the open end date into a far-future date so the current row matches any date from 15 October on. This is the lookup an SSIS package would do (Day 13's Lookup transformation, with a date range).</p><p class="pin"><span aria-hidden="true">📍</span> Fact loads look up the surrogate key by natural key AND date.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. Her old rides keep her old city</h3></div>
+        <pre><code class="language-sql">SELECT f.RideID, f.PickupTime, r.RiderKey, r.RiderName, r.RiderCity, f.FareAmount
+FROM FactRide f JOIN DimRider r ON r.RiderKey = f.RiderKey
+WHERE r.RiderPhone = '0300-1111111';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Ayesha's two rides on 1 October were stored with RiderKey 1, so they still report Lahore after her move. &quot;Revenue by rider city for October 1&quot; gives the same answer today as it did before she moved. That is the whole point of Type 2: history does not change when the present does.</p><p class="pin"><span aria-hidden="true">📍</span> Old facts point at old rows, so old reports stay correct.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. What Type 1 would have done: rewrite history</h3></div>
+        <pre><code class="language-sql">SELECT f.RideID, f.PickupTime, r.RiderCity AS CityAtTimeOfRide, cur.RiderCity AS CityIfOverwritten
+FROM FactRide f
+JOIN DimRider r   ON r.RiderKey = f.RiderKey
+JOIN DimRider cur ON cur.RiderPhone = r.RiderPhone AND cur.IsCurrent = 1
+WHERE r.RiderPhone = '0300-1111111';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This shows, without changing any data, what a Type 1 overwrite would report. The second join finds her current row, which is what a single overwritten row would hold. Rides taken in Lahore would show Islamabad, and Lahore's October revenue would silently drop by 970. Type 1 is right only when the old value was wrong (a typo), not when it was true and changed.</p><p class="pin"><span aria-hidden="true">📍</span> Type 1 moves old facts to the new value. Fine for corrections, wrong for real changes.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. Type 1 for a correction: fix her name everywhere</h3></div>
+        <pre><code class="language-sql">UPDATE DimRider SET RiderName = 'Ayesha Khan' WHERE RiderPhone = '0300-1111111';
+SELECT RiderKey, RiderPhone, RiderName, RiderCity, EffectiveFrom, EffectiveTo, IsCurrent FROM DimRider;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A spelling fix is not history; nobody wants a report that says she was called &quot;Ayesha&quot; before October. So the name is overwritten in place, on both of her rows (the WHERE matches the phone number, not the current row). One table can mix both types: RiderCity is tracked as Type 2, RiderName as Type 1.</p><p class="pin"><span aria-hidden="true">📍</span> Decide the type per column, not per table.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="the-date-dimension"><h2>The date dimension</h2>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Read the real one</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT TOP 5 * FROM DimDate WHERE CalendarYear = 2013 AND MonthNumberOfYear = 7;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per day. DateKey is an integer in the form yyyymmdd (20130701). The other 18 columns are pre-computed: day and month names in English, Spanish and French, day of week, month and year, week number, month number, calendar quarter, year and semester, and fiscal quarter, year and semester. A query that needs &quot;Mondays in fiscal Q1&quot; filters these columns instead of calculating anything.</p><p class="pin"><span aria-hidden="true">📍</span> Work done once, in the dimension, so no report ever has to compute it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. How many days does it cover?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Days, MIN(FullDateAlternateKey) AS FirstDay, MAX(FullDateAlternateKey) AS LastDay FROM DimDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>3,652 rows: every day from 1 January 2005 to 31 December 2014, ten full years including leap days. A date dimension covers every day, even days with no sales, so a report can show a zero for a quiet day instead of leaving it out.</p><p class="pin"><span aria-hidden="true">📍</span> A date dimension has every day, not just the days with facts.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>16. Build my own for 2026 in AWPractice</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+DROP TABLE IF EXISTS dbo.DimDate;
+CREATE TABLE DimDate (
+    DateKey INT PRIMARY KEY, FullDate DATE NOT NULL, Year INT, Quarter INT, Month INT, MonthName VARCHAR(10),
+    Day INT, DayOfWeek INT, DayName VARCHAR(10), IsWeekend BIT, WeekOfYear INT, FiscalYear INT, FiscalQuarter INT
+);
+;WITH Dates AS (
+    SELECT CAST('2026-01-01' AS DATE) AS d
+    UNION ALL SELECT DATEADD(day, 1, d) FROM Dates WHERE d &lt; '2026-12-31'
+)
+INSERT INTO DimDate
+SELECT CONVERT(INT, FORMAT(d, 'yyyyMMdd')), d, YEAR(d), DATEPART(quarter, d), MONTH(d), DATENAME(month, d),
+       DAY(d), DATEPART(weekday, d), DATENAME(weekday, d), CASE WHEN DATEPART(weekday, d) IN (1, 7) THEN 1 ELSE 0 END,
+       DATEPART(week, d),
+       CASE WHEN MONTH(d) &gt;= 7 THEN YEAR(d) + 1 ELSE YEAR(d) END,            -- fiscal year starts July
+       CASE WHEN MONTH(d) &gt;= 7 THEN DATEPART(quarter, d) - 2 ELSE DATEPART(quarter, d) + 2 END
+FROM Dates OPTION (MAXRECURSION 400);
+SELECT COUNT(*) AS Days, MIN(FullDate) AS FirstDay, MAX(FullDate) AS LastDay FROM DimDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>365 rows, 1 January to 31 December 2026. The recursive CTE (Day 6) starts at 1 January and adds one day until 31 December. SQL Server stops recursion after 100 levels by default, so OPTION (MAXRECURSION 400) allows a full year. FORMAT(d, 'yyyyMMdd') builds the integer key. Weekend uses weekday 1 (Sunday) and 7 (Saturday), which is correct for this server's default setting (DATEFIRST 7, us_english). This script is saved as its own file, dimdate.sql, because every warehouse needs one.</p><p class="pin"><span aria-hidden="true">📍</span> Build it once with a script, keep the script, extend the years when needed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>17. October 2026 in the new DimDate</h3></div>
+        <pre><code class="language-sql">SELECT * FROM DimDate WHERE Month = 10;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>31 rows. 1 October 2026 is a Thursday (DayOfWeek 5), the weekends are flagged, and October falls in fiscal year 2027, fiscal quarter 2, because this fiscal year starts in July (Pakistan's government fiscal year runs July to June).</p><p class="pin"><span aria-hidden="true">📍</span> Every attribute a report could want, ready to filter and group by.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">31 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>18. Check the fiscal columns: the first day of each month</h3></div>
+        <pre><code class="language-sql">SELECT Month, MonthName, FiscalYear, FiscalQuarter FROM DimDate WHERE Day = 1 ORDER BY DateKey;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>January to June 2026 are fiscal year 2026, quarters 3 and 4; July to December are fiscal year 2027, quarters 1 and 2. The two CASE expressions are correct. Checking 12 rows by eye now saves a wrong fiscal report later.</p><p class="pin"><span aria-hidden="true">📍</span> Test generated columns against cases you can work out by hand.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>19. Use it: rides by day, weekend flag and fiscal period</h3></div>
+        <pre><code class="language-sql">SELECT d.FullDate, d.DayName, d.IsWeekend, d.FiscalYear, d.FiscalQuarter, COUNT(*) AS Rides, SUM(f.FareAmount) AS Fare
+FROM FactRide f JOIN DimDate d ON d.DateKey = f.DateKey
+GROUP BY d.FullDate, d.DayName, d.IsWeekend, d.FiscalYear, d.FiscalQuarter;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three rides on Thursday 1 October (1,150) and two on Friday 2 October (880), both weekdays in fiscal 2027 Q2. FactRide's DateKey column was built on Day 17 for the small DimRideDate table, yet it joins to the new DimDate with no change, because both use the same yyyymmdd integer. No YEAR(), DATENAME() or fiscal-year logic appears in the query.</p><p class="pin"><span aria-hidden="true">📍</span> The fact stores a date key; everything about the date comes from the dimension.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="surrogate-keys-why-the-fact-never-stores-the-natural-key"><h2>Surrogate keys: why the fact never stores the natural key</h2>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>20. Join on the natural key instead of the surrogate</h3></div>
+        <pre><code class="language-sql">USE AdventureWorksDW2022;
+SELECT 'Surrogate key (ProductKey)' AS JoinedOn, COUNT(*) AS Lines, SUM(f.SalesAmount) AS Revenue
+FROM FactResellerSales f JOIN DimProduct p ON p.ProductKey = f.ProductKey
+WHERE p.ProductAlternateKey = 'FR-M94B-38'
+UNION ALL
+SELECT 'Natural key (ProductAlternateKey)', COUNT(*), SUM(f.SalesAmount)
+FROM FactResellerSales f
+JOIN DimProduct sold ON sold.ProductKey = f.ProductKey
+JOIN DimProduct p    ON p.ProductAlternateKey = sold.ProductAlternateKey
+WHERE p.ProductAlternateKey = 'FR-M94B-38';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Through the surrogate key: 289 lines and 501,788.20, the true figures from drill 3. Through the natural key: 867 lines and 1,505,364.59, exactly three times too much, because the product code matches all three versions of the product and every sale is joined to each of them. Once a dimension keeps history, the natural key is no longer unique, so only the surrogate key can tell the fact which version it belongs to.</p><p class="pin"><span aria-hidden="true">📍</span> Facts store surrogate keys only; the natural key stays in the dimension for lookups.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of step 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: step 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Written exercise: Type 1 or Type 2 for each ride-sharing dimension</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Dimension and column</th><th>Type</th><th>Why</th></tr></thead><tbody><tr><td>DimRider: RiderCity</td><td><strong>2</strong></td><td>Where riders lived when they rode matters for city reports; a move must not rewrite old rides (built in steps 6 to 12).</td></tr><tr><td>DimRider: RiderName</td><td>1</td><td>A name change or spelling fix does not change what happened; one current name everywhere is what users want.</td></tr><tr><td>DimDriver: DriverName</td><td>1</td><td>Corrections only; nobody reports by "driver name at the time".</td></tr><tr><td>DimDriver: the vehicle a driver uses</td><td>No SCD needed</td><td>The Day 17 fact stores VehicleKey on every ride, so each ride already records the vehicle actually used. If the vehicle were folded into DimDriver (the Day 19 star), it would have to be <strong>Type 2</strong>.</td></tr><tr><td>DimVehicle: VehicleType</td><td>1</td><td>A plate's type (Mini, AC, Bike) only changes if it was entered wrongly.</td></tr><tr><td>DimZone: ZoneName</td><td>1</td><td>A renamed zone ("Johar Town" written differently) is the same place; old rides should show the new name.</td></tr><tr><td>DimZone: City</td><td>0 (never changes)</td><td>A zone does not move to another city. If zone boundaries were redrawn, that would be a new zone with a new key.</td></tr><tr><td>DimPayment: all columns</td><td>0</td><td>Each row is a fixed combination (Cash + promo OCT10); it never changes, new combinations just get new rows.</td></tr><tr><td>DimDate</td><td>0</td><td>The calendar does not change; holidays are added in advance as columns.</td></tr></tbody></table></div><div class="tip"><strong>Columns added to the Type 2 dimension:</strong> DimRider now has EffectiveFrom, EffectiveTo and IsCurrent (step 6), and its uniqueness rule is "one current row per phone number" (step 8).<br><br><strong>Pickup time:</strong> I chose <strong>PickupDateKey plus a PickupHour column</strong>, not a time-of-day dimension. FactRide already has DateKey (yyyymmdd, which joins to the new DimDate, step 19) and PickupHour (0 to 23). The questions the business asks are by hour ("morning peak", "late night"), so a 24-value column is enough. A DimTime with 1,440 rows (one per minute) would only pay off if reports grouped by named time bands that change, or by minute. The exact PickupTime and DropoffTime stay in the fact to calculate durations.</div><h2>Self-test: answers</h2><div class="tip"><strong>Type 1 vs Type 2 with the Ayesha example:</strong> Ayesha lived in Lahore and moved to Islamabad on 15 October. Type 1 would overwrite her city, so her rides on 1 October would suddenly appear under Islamabad and Lahore's October revenue would drop by 970 (step 12). Type 2 closes her Lahore row and adds an Islamabad row with a new key (6); old rides keep key 1 and stay in Lahore, new rides get key 6.<br><br><strong>Why a fact table never stores the natural key:</strong> once a dimension keeps history, the natural key matches several rows, so a join on it multiplies the facts: three times too much revenue in step 20. Natural keys can also change, be reused, clash between source systems or be long strings.<br><br><strong>Five columns a date dimension should have:</strong> DateKey (yyyymmdd), FullDate, Year, MonthName, DayName, plus Quarter, IsWeekend, FiscalYear, FiscalQuarter and a holiday flag.<br><br><strong>Why DateKey is an integer like 20261030 and not a DATE:</strong> not to save space (DATE takes 3 bytes, INT 4). It is readable (you can see the date in the number), sorts in date order, joins like every other integer surrogate key, works well for partitioning by range, and can hold special members that are not dates, such as -1 for "unknown date" or 99991231 for "no end date", which a real DATE column cannot express as a row of its own.</div>
+  <nav class="pager"><a href="../day19/">← Day 19: Star schema and snowflake schema</a><a href="../day21/">Day 21: Week 3 assessment and instructor update →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
