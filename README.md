@@ -44,6 +44,16 @@ Run against AdventureWorksDW2022, Microsoft's warehouse version of the same samp
 
 **New to data warehousing?** Start with [dw/notes.md](dw/notes.md): the whole week explained from zero, with every term defined, real results, diagrams and a self-test. The SQL for each day is in [dw/sql/](dw/sql/), and [dw/dimdate.sql](dw/dimdate.sql) builds a reusable date dimension.
 
+## Week 4: ETL and Data Quality
+
+An ELT pipeline built in SQL: raw copies in the `stg` schema, a load log and watermarks in `etl`, and (from Day 24) a finished sales star in `dw`, all in AWPractice and loaded from AdventureWorks2022.
+
+| Day | Topic | What it covers | Queries |
+|---|---|---|---|
+| [22](day22/) | ETL vs ELT, staging, full and incremental extract | Staging and bookkeeping schemas, a load log, full extracts of orders, order lines, customers and products, reconciling counts and totals against the source, a ModifiedDate watermark, an incremental extract that is safe to re-run, profiling the staged data | 17 |
+
+The SQL for each day is in [etl/sql/](etl/sql/), with a reset script that puts AWPractice back so the day can be run again from the start.
+
 ## The chain: SQL Server → SSIS → Power BI
 
 The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx) summarises `Sales.SalesOrderHeader` from AdventureWorks2022 by territory and month and loads it into `reporting.SalesSummary` in the AWPractice database. The Power BI report [SalesSummary.pbix](pbi/SalesSummary.pbix) imports that table.
@@ -70,6 +80,8 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **DimCustomer uses only 336 of DimGeography's 655 rows**, about 55 customers per geography, not the 28 the syllabus estimates (Day 19).
 - **Turning a dimension into Type 2 breaks its UNIQUE rule.** The rider table's UNIQUE constraint on the phone number blocked the second row; it has to become "one current row per phone" (a filtered unique index). Without `SET XACT_ABORT ON`, the failed change still committed its UPDATE and left the rider with no current row (Day 20).
 - **Joining a Type 2 dimension on its natural key multiplies the facts:** 867 lines and three times the revenue for product FR-M94B-38 instead of 289 (Day 20).
+- **The 1,336 customers with no home city are exactly the store customers.** A store's address is recorded against the store, not its contact person, while every individual customer has a home city. They placed 3,806 orders, exactly the orders not placed online (Day 22).
+- **A NULL SalesPersonID is not missing data:** all 27,659 orders without a salesperson are online orders (Day 22).
 
 ## Structure
 
@@ -83,5 +95,6 @@ dw/notes.md       data warehousing explained from zero (Week 3)
 dw/sql/           dayNN.sql: every query of Days 15 to 21
 dw/dimdate.sql    reusable date dimension build script
 dw/images/        SSMS star and snowflake diagrams
+etl/sql/          dayNN.sql: every query of Week 4, plus reset scripts
 assets/           stylesheet and script
 ```

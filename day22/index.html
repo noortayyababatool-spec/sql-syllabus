@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 22: ETL vs ELT, staging, full and incremental extract · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/">Day 21</a><a href="../day22/" aria-current="page">Day 22</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 4 · ETL and Data Quality</a> / Day 22</p>
+  <h1>Day 22: ETL vs ELT, staging, full and incremental extract</h1>
+  <p class="meta">Fri 13 November 2026 · 17 queries · run on AWPractice, reading AdventureWorks2022</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> copy source data into a staging area completely and provably, then copy only what changed.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;Extract, transform, and load (ETL)&quot; (the ETL vs ELT section); Kimball Group &quot;The 34 subsystems of ETL&quot; (subsystems 1 to 3: data profiling, change data capture, extract).</p>
+  </div>
+  <div class="tip"><strong>Where this week fits:</strong> Weeks 1 to 3 built and queried warehouses that were already full. This week fills one: a small sales warehouse in AWPractice, loaded from AdventureWorks2022 by SQL alone. Day 22 extracts, Day 23 cleans and transforms, Day 24 loads dimensions and facts, Day 25 tests the data, Day 26 packages the whole load into one re-runnable procedure, Day 27 documents the design and Day 28 is the assessment. This is Week 7 of the instructor's two-month plan ("ETL and Data Quality"), plus the "document schema design" task left over from Week 6.</div><div class="tablewrap"><table class="map prose"><thead><tr><th></th><th>ETL: Extract, Transform, Load</th><th>ELT: Extract, Load, Transform</th></tr></thead><tbody><tr><td><strong>Order</strong></td><td>Data is cleaned and reshaped <em>on the way</em>, by a separate tool, then loaded finished</td><td>Raw data is loaded first into staging tables <em>inside</em> the warehouse, then transformed there with SQL</td></tr><tr><td><strong>Where the work happens</strong></td><td>In the ETL tool's memory: the SSIS data flow of Day 13 (Derived Column, Data Conversion, Lookup)</td><td>In the warehouse database itself: INSERT ... SELECT, MERGE, views and stored procedures</td></tr><tr><td><strong>Strengths</strong></td><td>Only clean data ever reaches the warehouse; good when the warehouse server is small or the source is not a database (files, APIs)</td><td>Simple to rerun (the raw copy is kept), uses the database's own power, every step is visible as SQL</td></tr><tr><td><strong>Typical tools</strong></td><td>SSIS, Informatica, Talend</td><td>SQL Server procedures, Snowflake, BigQuery, dbt</td></tr><tr><td><strong>This week</strong></td><td>Day 13's SSIS package was ETL</td><td><strong>Days 22 to 26 are ELT:</strong> raw copies in <code>stg</code>, transforms in SQL, finished tables in <code>dw</code></td></tr></tbody></table></div><div class="tablewrap"><table class="map prose"><thead><tr><th>Schema</th><th>Holds</th><th>Rule</th></tr></thead><tbody><tr><td><code>stg</code></td><td>Raw copies of source tables</td><td>No cleaning, no keys, no constraints. Dropped and refilled by each extract</td></tr><tr><td><code>etl</code></td><td>LoadLog and Watermark</td><td>Never truncated: this is the pipeline's memory</td></tr><tr><td><code>dw</code> (Day 24)</td><td>The finished star: dimensions and the sales fact</td><td>Clean, keyed and constrained. Reports read only from here</td></tr></tbody></table></div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#set-up-the-staging-area">Set up the staging area</a> <span>2</span></li><li><a href="#full-extract-copy-what-the-warehouse-needs-nothing-more">Full extract: copy what the warehouse needs, nothing more</a> <span>6</span></li><li><a href="#incremental-extract-only-what-changed-since-last-time">Incremental extract: only what changed since last time</a> <span>7</span></li><li><a href="#profile-what-was-extracted-before-cleaning-it-on-day-23">Profile what was extracted (before cleaning it on Day 23)</a> <span>2</span></li></ol></div>
+  <section class="part" id="set-up-the-staging-area"><h2>Set up the staging area</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Two new schemas: stg for raw copies, etl for bookkeeping</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+IF SCHEMA_ID('stg') IS NULL EXEC('CREATE SCHEMA stg');   -- staging: raw copies of source tables
+IF SCHEMA_ID('etl') IS NULL EXEC('CREATE SCHEMA etl');   -- load log and watermarks
+SELECT name AS SchemaName, schema_id FROM sys.schemas WHERE name IN ('stg', 'etl', 'dw', 'reporting');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CREATE SCHEMA must be the only statement in its batch, so it runs inside EXEC(), and the IF makes the script safe to run twice. stg (staging) will hold raw copies of the source tables, taken as they are, with no cleaning. etl will hold the bookkeeping: the load log and the watermarks. Next to the reporting schema from Day 10, AWPractice now has a separate place for each stage of the pipeline: raw (stg), the process (etl) and, from Day 24, the finished warehouse (dw).</p><p class="pin"><span aria-hidden="true">📍</span> Keep raw copies, bookkeeping and finished tables in separate schemas.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. A load log: every extract writes one row</h3></div>
+        <pre><code class="language-sql">IF OBJECT_ID('etl.LoadLog') IS NULL
+    CREATE TABLE etl.LoadLog (
+        LogID        INT IDENTITY PRIMARY KEY,
+        Step         VARCHAR(30)  NOT NULL,      -- 'Extract full', 'Extract incremental'
+        TableName    VARCHAR(60)  NOT NULL,
+        RowsAffected INT          NOT NULL,
+        StartedAt    DATETIME2(3) NOT NULL,
+        EndedAt      DATETIME2(3) NOT NULL
+    );
+SELECT * FROM etl.LoadLog;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>An empty table with one row per extract: which step ran, which table it filled, how many rows it moved and when it started and ended. LogID is an IDENTITY, so the log is in run order. The IF OBJECT_ID check means re-running the script keeps the history instead of wiping it. SSIS packages and stored procedures in real teams write to a table like this so that a failed or empty load is noticed the next morning, not at month end.</p><p class="pin"><span aria-hidden="true">📍</span> If a load does not write down what it did, nobody can prove it ran.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Results tab: 0 rows (the log is empty until the first extract)</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="full-extract-copy-what-the-warehouse-needs-nothing-more"><h2>Full extract: copy what the warehouse needs, nothing more</h2>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Extract the order headers from AdventureWorks2022</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DROP TABLE IF EXISTS stg.SalesOrderHeader;
+SELECT SalesOrderID, OrderDate, DueDate, ShipDate, Status, OnlineOrderFlag, CustomerID, SalesPersonID,
+       TerritoryID, SubTotal, TaxAmt, Freight, TotalDue, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt                              -- when this copy was taken
+INTO stg.SalesOrderHeader
+FROM AdventureWorks2022.Sales.SalesOrderHeader;
+DECLARE @n INT = @@ROWCOUNT;                                     -- read it immediately
+INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.SalesOrderHeader', @n, @t0, SYSDATETIME());
+SELECT * FROM etl.LoadLog WHERE LogID = SCOPE_IDENTITY();</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>31,465 order headers copied from AdventureWorks2022 into stg.SalesOrderHeader in a fraction of a second. The three-part name AdventureWorks2022.Sales.SalesOrderHeader reads from another database on the same server. Only 14 of the 26 source columns are taken: the warehouse does not need rowguid, the credit-card ID or the comment. SELECT INTO creates the staging table with the source's column types and no keys or constraints, which is what staging should be: a fast, faithful copy. DROP TABLE IF EXISTS first makes the extract a full refresh that can be run any number of times. @@ROWCOUNT is read into @n on the very next line, because the next statement would reset it.</p><p class="pin"><span aria-hidden="true">📍</span> Extract = a plain copy of the columns you need, stamped with when it was taken.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Extract the order lines</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DROP TABLE IF EXISTS stg.SalesOrderDetail;
+SELECT SalesOrderID, SalesOrderDetailID, ProductID, OrderQty, UnitPrice, UnitPriceDiscount, LineTotal, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt
+INTO stg.SalesOrderDetail
+FROM AdventureWorks2022.Sales.SalesOrderDetail;
+DECLARE @n INT = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.SalesOrderDetail', @n, @t0, SYSDATETIME());
+SELECT * FROM etl.LoadLog WHERE LogID = SCOPE_IDENTITY();</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>121,317 order lines in under a second. The pattern is identical to step 3: drop, copy the needed columns plus ExtractedAt, capture the row count, write a log row. Every extract in a pipeline should look the same so that anyone can read any of them.</p><p class="pin"><span aria-hidden="true">📍</span> Each source table gets its own staging table and its own log row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Extract customers with their name and home city</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DROP TABLE IF EXISTS stg.Customer;
+SELECT c.CustomerID, c.PersonID, c.StoreID, c.TerritoryID, p.FirstName, p.LastName,
+       a.City, sp.CountryRegionCode, c.ModifiedDate, SYSDATETIME() AS ExtractedAt
+INTO stg.Customer
+FROM AdventureWorks2022.Sales.Customer c
+LEFT JOIN AdventureWorks2022.Person.Person p ON p.BusinessEntityID = c.PersonID
+LEFT JOIN AdventureWorks2022.Person.BusinessEntityAddress bea
+       ON bea.BusinessEntityID = c.PersonID AND bea.AddressTypeID = 2          -- 2 = Home
+LEFT JOIN AdventureWorks2022.Person.Address a        ON a.AddressID = bea.AddressID
+LEFT JOIN AdventureWorks2022.Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID;
+DECLARE @n INT = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.Customer', @n, @t0, SYSDATETIME());
+SELECT * FROM etl.LoadLog WHERE LogID = SCOPE_IDENTITY();</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>19,820 customers, one row per customer. A customer's name is in Person.Person and the home city is three tables further away (BusinessEntityAddress, Address, StateProvince), so this extract joins them. Every join is a LEFT JOIN: store customers have no person and no home address, and an INNER JOIN would silently drop them. The staging row count must equal the source count (19,820 = 19,820), which proves no customer was lost or duplicated. AddressTypeID = 2 picks the Home address only, so no customer gets two rows.</p><p class="pin"><span aria-hidden="true">📍</span> LEFT JOINs in an extract: never lose a source row because a lookup is missing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Extract products from the practice copy (the &quot;source system&quot; this week)</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DROP TABLE IF EXISTS stg.Product;
+SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt
+INTO stg.Product
+FROM dbo.Product;                                 -- AWPractice copy, so changes can be simulated safely
+DECLARE @n INT = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.Product', @n, @t0, SYSDATETIME());
+SELECT * FROM etl.LoadLog WHERE LogID = SCOPE_IDENTITY();</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>508 products. This week's product source is AWPractice's own copy of Production.Product (made on Day 9, with four practice products added), not AdventureWorks2022 itself. Steps 11 to 14 need to change prices and add a product, and a sample database that other days depend on should never be edited. In a real job the source system is someone else's application; you only read from it.</p><p class="pin"><span aria-hidden="true">📍</span> Pick a source you are allowed to change when you need to test change handling.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. Reconcile: does staging match the source?</h3></div>
+        <pre><code class="language-sql">SELECT 'SalesOrderHeader' AS TableName,
+       (SELECT COUNT(*) FROM AdventureWorks2022.Sales.SalesOrderHeader) AS SourceRows,
+       (SELECT COUNT(*) FROM stg.SalesOrderHeader) AS StagingRows,
+       (SELECT SUM(TotalDue) FROM AdventureWorks2022.Sales.SalesOrderHeader) AS SourceTotal,
+       (SELECT SUM(TotalDue) FROM stg.SalesOrderHeader) AS StagingTotal
+UNION ALL
+SELECT 'SalesOrderDetail', (SELECT COUNT(*) FROM AdventureWorks2022.Sales.SalesOrderDetail),
+       (SELECT COUNT(*) FROM stg.SalesOrderDetail),
+       (SELECT SUM(LineTotal) FROM AdventureWorks2022.Sales.SalesOrderDetail), (SELECT SUM(LineTotal) FROM stg.SalesOrderDetail)
+UNION ALL
+SELECT 'Customer', (SELECT COUNT(*) FROM AdventureWorks2022.Sales.Customer), (SELECT COUNT(*) FROM stg.Customer), NULL, NULL
+UNION ALL
+SELECT 'Product', (SELECT COUNT(*) FROM dbo.Product), (SELECT COUNT(*) FROM stg.Product),
+       (SELECT SUM(ListPrice) FROM dbo.Product), (SELECT SUM(ListPrice) FROM stg.Product);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every staging table has exactly as many rows as its source, and the money totals match to the last decimal: 123,216,786.1159 for TotalDue and 109,846,381.3999 for LineTotal. A matching count alone could hide a fault (one row lost and another duplicated), and a matching total alone could hide another, so check both. Customer has no money column, so only the count is compared. This check is the extract's proof of completeness; Day 25 turns checks like this into an automatic test suite.</p><p class="pin"><span aria-hidden="true">📍</span> Check two things after every extract: the row count and the total of a money column.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Read the log</h3></div>
+        <pre><code class="language-sql">SELECT LogID, Step, TableName, RowsAffected, StartedAt, EndedAt,
+       DATEDIFF(millisecond, StartedAt, EndedAt) AS Ms
+FROM etl.LoadLog ORDER BY LogID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Four log rows, one per extract: 31,465, 121,317, 19,820 and 508 rows, each finishing in under a second (9 to 958 milliseconds in this run). DATEDIFF(millisecond, ...) works out each duration. If tomorrow's run logs 0 order lines, or takes 40 seconds instead of one, the log shows it without anyone opening the data.</p><p class="pin"><span aria-hidden="true">📍</span> The log answers &quot;did it run, how much did it move, how long did it take&quot;.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">4 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="incremental-extract-only-what-changed-since-last-time"><h2>Incremental extract: only what changed since last time</h2>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. A watermark table, set to where the full extract finished</h3></div>
+        <pre><code class="language-sql">IF OBJECT_ID('etl.Watermark') IS NULL
+    CREATE TABLE etl.Watermark (TableName VARCHAR(60) PRIMARY KEY, LastModified DATETIME NOT NULL);
+DELETE FROM etl.Watermark WHERE TableName = 'dbo.Product';
+INSERT INTO etl.Watermark SELECT 'dbo.Product', MAX(ModifiedDate) FROM stg.Product;
+SELECT * FROM etl.Watermark;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A watermark is a bookmark: the newest ModifiedDate that has already been copied. The full extract in step 6 copied everything up to 16 October 2026, 17:51:46 (when the practice products were last edited on Day 9), so that becomes the starting watermark for dbo.Product. The table has one row per source table, so the same design works for any number of tables.</p><p class="pin"><span aria-hidden="true">📍</span> The watermark is the newest ModifiedDate already copied.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. What has changed since the watermark?</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID, p.Name, p.ListPrice, p.ModifiedDate
+FROM dbo.Product p
+WHERE p.ModifiedDate &gt; (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Zero rows. No product has a ModifiedDate later than the watermark, because nothing has changed since the full extract. An incremental extract asks only this question: which rows were modified after the last one I copied?</p><p class="pin"><span aria-hidden="true">📍</span> Right after a full extract, nothing is newer than the watermark.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">Results tab: 0 rows (nothing has changed yet)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. The source system changes: two new prices and one new product</h3></div>
+        <pre><code class="language-sql">UPDATE dbo.Product SET ListPrice = 1499.00, ModifiedDate = '2026-11-13 09:00' WHERE ProductID = 680;
+UPDATE dbo.Product SET ListPrice = 6.49,    ModifiedDate = '2026-11-13 09:00' WHERE ProductID = 1001;
+IF NOT EXISTS (SELECT 1 FROM dbo.Product WHERE ProductNumber = 'PR-1005')
+    INSERT INTO dbo.Product (Name, ProductNumber, MakeFlag, FinishedGoodsFlag, SafetyStockLevel, ReorderPoint,
+                             StandardCost, ListPrice, DaysToManufacture, SellStartDate, rowguid, ModifiedDate)
+    VALUES ('Practice Light', 'PR-1005', 0, 1, 4, 3, 7.50, 17.99, 0, '2026-11-13', NEWID(), '2026-11-13 09:00');
+SELECT ProductID, Name, ListPrice, ModifiedDate FROM dbo.Product WHERE ModifiedDate &gt;= '2026-11-13';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The source system changes, as it would during a working day. The HL Road Frame (ProductID 680) goes from 1,431.50 to 1,499.00, the Practice Bottle (1001) from 5.99 to 6.49, and a new product, the Practice Light, is added with ProductID 1005 at 17.99. Each change sets ModifiedDate to 13 November 2026, 09:00. The IF NOT EXISTS stops a second run from adding the light twice. These are the changes the incremental extract must catch, and on Day 24 the price changes will become Type 2 history in the product dimension.</p><p class="pin"><span aria-hidden="true">📍</span> A well-behaved source updates ModifiedDate on every change. Incremental extract depends on it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. Ask again: what has changed?</h3></div>
+        <pre><code class="language-sql">SELECT p.ProductID, p.Name, p.ListPrice, p.ModifiedDate
+FROM dbo.Product p
+WHERE p.ModifiedDate &gt; (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product');</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Now the same query from step 10 returns three rows: the two re-priced products and the new one. Updates and inserts are caught the same way, because both set ModifiedDate. What this method cannot catch is a deleted row (it is no longer there to have a date) or a change made by a program that forgets to update ModifiedDate. Real pipelines handle deletes with a periodic full comparison or with SQL Server's Change Data Capture.</p><p class="pin"><span aria-hidden="true">📍</span> Same query, new answer: exactly the rows the source touched.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. The incremental extract: copy the changes, then move the watermark</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @wm DATETIME = (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product');
+DROP TABLE IF EXISTS stg.ProductDelta;
+SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt
+INTO stg.ProductDelta
+FROM dbo.Product WHERE ModifiedDate &gt; @wm;
+DECLARE @n INT = @@ROWCOUNT;
+UPDATE etl.Watermark SET LastModified = ISNULL((SELECT MAX(ModifiedDate) FROM stg.ProductDelta), @wm)
+WHERE TableName = 'dbo.Product';
+INSERT INTO etl.LoadLog VALUES ('Extract incremental', 'stg.ProductDelta', @n, @t0, SYSDATETIME());
+SELECT @wm AS OldWatermark, (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product') AS NewWatermark,
+       @n AS RowsExtracted;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The incremental extract copies only the changed rows into stg.ProductDelta: 3 rows instead of 508. It then moves the watermark from 16 October 17:51:46 to 13 November 09:00, the newest ModifiedDate it just copied, and writes a log row. The watermark is set from the copied data (MAX of ModifiedDate in the delta), not from the clock, so a change made while the extract was running is not skipped. ISNULL keeps the old watermark when nothing was copied.</p><p class="pin"><span aria-hidden="true">📍</span> Copy the changed rows and move the watermark in the same run.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Run exactly the same extract again</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @wm DATETIME = (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product');
+DROP TABLE IF EXISTS stg.ProductDelta;
+SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt
+INTO stg.ProductDelta
+FROM dbo.Product WHERE ModifiedDate &gt; @wm;
+DECLARE @n INT = @@ROWCOUNT;
+UPDATE etl.Watermark SET LastModified = ISNULL((SELECT MAX(ModifiedDate) FROM stg.ProductDelta), @wm)
+WHERE TableName = 'dbo.Product';
+INSERT INTO etl.LoadLog VALUES ('Extract incremental', 'stg.ProductDelta', @n, @t0, SYSDATETIME());
+SELECT @wm AS OldWatermark, (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product') AS NewWatermark,
+       @n AS RowsExtracted;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The identical script, run a second time, extracts 0 rows and leaves the watermark at 13 November 09:00. The changes were already copied and the watermark has moved past them. This is what makes an incremental extract safe to schedule every hour: running it again never copies the same change twice.</p><p class="pin"><span aria-hidden="true">📍</span> An incremental extract run twice copies nothing the second time: safe to re-run.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. Full vs incremental in the log</h3></div>
+        <pre><code class="language-sql">SELECT LogID, Step, TableName, RowsAffected, DATEDIFF(millisecond, StartedAt, EndedAt) AS Ms
+FROM etl.LoadLog ORDER BY LogID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The log now tells the whole story: four full extracts (31,465, 121,317, 19,820 and 508 rows), then two incremental runs on products, with 3 rows and then 0. On a database with millions of rows, the difference between copying everything and copying only the changes is the difference between a load that takes hours and one that takes seconds.</p><p class="pin"><span aria-hidden="true">📍</span> Full extracts move everything; incremental ones move only what changed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="profile-what-was-extracted-before-cleaning-it-on-day-23"><h2>Profile what was extracted (before cleaning it on Day 23)</h2>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>16. Profile the order headers</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Orders, COUNT(DISTINCT CustomerID) AS Customers,
+       SUM(CASE WHEN SalesPersonID IS NULL THEN 1 ELSE 0 END) AS NoSalesPerson,
+       SUM(CASE WHEN OnlineOrderFlag = 1 THEN 1 ELSE 0 END) AS OnlineOrders,
+       SUM(CASE WHEN ShipDate IS NULL THEN 1 ELSE 0 END) AS NotShipped,
+       MIN(OrderDate) AS FirstOrder, MAX(OrderDate) AS LastOrder
+FROM stg.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>31,465 orders from 19,119 different customers, placed between 31 May 2011 and 30 June 2014. 27,659 orders have no SalesPersonID, and exactly 27,659 are online orders: the NULL is not missing data, it means the customer bought online with no sales rep. The transform step must turn that NULL into a readable label, not drop or guess it. No order lacks a ShipDate. Every number here becomes a rule or a check later.</p><p class="pin"><span aria-hidden="true">📍</span> Profiling = counting NULLs, ranges and distinct values before you trust the data.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>17. Profile the customers: what is missing?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Customers,
+       SUM(CASE WHEN PersonID IS NULL THEN 1 ELSE 0 END)  AS NoPerson,
+       SUM(CASE WHEN StoreID  IS NULL THEN 1 ELSE 0 END)  AS NoStore,
+       SUM(CASE WHEN FirstName IS NULL THEN 1 ELSE 0 END) AS NoName,
+       SUM(CASE WHEN City IS NULL THEN 1 ELSE 0 END)      AS NoCity,
+       COUNT(DISTINCT City) AS Cities, COUNT(DISTINCT CountryRegionCode) AS Countries
+FROM stg.Customer;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>19,820 customers. 701 have no PersonID and therefore no name: they are stores, not people. 18,484 have no StoreID: they are individual online shoppers. 1,336 have no city, and a follow-up check showed that these are exactly the 1,336 store customers (701 stores with no contact person, and 635 that also have a contact person). A store's address is recorded against the store, not the contact, and every individual customer has a home city. The data covers 269 cities in 6 countries. Day 23 will decide what each gap becomes in the warehouse, for example 'Unknown' instead of NULL.</p><p class="pin"><span aria-hidden="true">📍</span> Write down every gap now; each one needs a rule in the transform step.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Self-test: answers</h2><div class="tip"><strong>ETL vs ELT in one sentence each:</strong> ETL transforms the data in a separate tool before loading it; ELT loads raw data into the warehouse first and transforms it there with SQL. On SQL Server, both are common: SSIS for ETL, stored procedures over staging tables for ELT.<br><br><strong>Why staging tables have no keys or constraints:</strong> their job is to receive whatever the source sends, quickly and completely. A constraint would make the extract fail on the very rows that need attention. The checks belong in the transform and validation steps, where a bad row can be reported instead of stopping the whole load.<br><br><strong>Why the watermark is set from the data and not from the clock:</strong> if it were set to "now" at the end of the run, any row changed while the extract was running would carry a ModifiedDate earlier than the new watermark and would never be copied. MAX(ModifiedDate) of the copied rows can only be as new as what was actually copied.<br><br><strong>What a ModifiedDate watermark misses:</strong> deleted rows, and changes made without updating ModifiedDate. Fixes: a periodic full extract compared with the warehouse, a "deleted" flag in the source, or Change Data Capture / change tracking in SQL Server.<br><br><strong>Full or incremental for each table here:</strong> products, customers and order headers change, so in a real pipeline all three would be incremental; Product was done incrementally today as the example. Small reference tables (territories, categories) are cheaper to copy in full every time.</div><h2>What Day 23 has to deal with (from the profiling)</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Found today</th><th>Count</th><th>Decision for the transform</th></tr></thead><tbody><tr><td>Orders with no SalesPersonID</td><td>27,659</td><td>Not missing: all online orders. Show "Online (no rep)" in the warehouse</td></tr><tr><td>Customers with no PersonID (and no name)</td><td>701</td><td>Stores. Use the store name instead, or "Store customer"</td></tr><tr><td>Customers with no city</td><td>1,336</td><td>All store customers. Use "Unknown" so the city never shows as blank in a report</td></tr><tr><td>Products with no colour (stg.Product)</td><td>4</td><td>Replace NULL with "No colour"; never leave NULL in a column users group by</td></tr><tr><td>Products with no subcategory</td><td>213</td><td>Parts and components that are not sold. Label them "Not for sale" or leave them out of the sales star</td></tr></tbody></table></div>
+  <nav class="pager"><a href="../day21/">← Day 21: Week 3 assessment and instructor update</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
