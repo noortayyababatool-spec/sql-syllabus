@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 23: Transform: cleaning and standardising · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/">Day 21</a><a href="../day22/">Day 22</a><a href="../day23/" aria-current="page">Day 23</a><a href="../day24/">Day 24</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 4 · ETL and Data Quality</a> / Day 23</p>
+  <h1>Day 23: Transform: cleaning and standardising</h1>
+  <p class="meta">Mon 16 November 2026 · 19 queries · run on AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> turn raw staged data into consistent, typed, de-duplicated rows, and account for every row that could not be used.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;TRY_CONVERT&quot;, &quot;TRIM&quot;, &quot;CREATE VIEW&quot;; Kimball Group &quot;The 34 subsystems of ETL&quot; (subsystem 4, data cleansing, and 8, error event handling).</p>
+  </div>
+  <div class="tip"><strong>The T in ELT:</strong> Day 22 copied the data as it was. Today decides what it should look like in the warehouse: no NULLs in columns people group by, one spelling per city, one format per phone number, real dates and numbers instead of text, one row per real person. Two sources are cleaned. AdventureWorks is already tidy, so its rules are short and written as <strong>views</strong> that Day 24 will load from. The second source is deliberately messy: twelve web sign-ups typed by real people, the kind of file every data team receives.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Problem</th><th>Rule used today</th><th>Function</th></tr></thead><tbody><tr><td>NULL that has a meaning</td><td>Replace with a label that says what it means</td><td>ISNULL, COALESCE, CASE</td></tr><tr><td>Spaces and mixed case</td><td>Trim, then one case</td><td>TRIM, LTRIM, RTRIM, UPPER, LOWER</td></tr><tr><td>Text that should be a date or number</td><td>Try each known format; NULL if none fits</td><td>TRY_CONVERT, TRY_CAST</td></tr><tr><td>Many spellings of one value</td><td>A mapping table joined on the cleaned text</td><td>LEFT JOIN etl.CityMap</td></tr><tr><td>Many formats of one value</td><td>Strip to the essentials, then rebuild one format</td><td>REPLACE, LEFT, RIGHT, SUBSTRING</td></tr><tr><td>The same person twice</td><td>Number rows per cleaned key, keep number 1</td><td>ROW_NUMBER() OVER (PARTITION BY ...)</td></tr><tr><td>A row that cannot be fixed</td><td>Move it to a reject table with the reason</td><td>SELECT ... INTO stg.WebSignupReject</td></tr></tbody></table></div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#reference-data-the-rules-need">Reference data the rules need</a> <span>1</span></li><li><a href="#transform-rules-on-the-real-data-written-as-views">Transform rules on the real data, written as views</a> <span>5</span></li><li><a href="#a-messy-source-web-sign-ups-loaded-from-a-csv">A messy source: web sign-ups loaded from a CSV</a> <span>9</span></li><li><a href="#put-the-rules-together-clean-reject-de-duplicate">Put the rules together: clean, reject, de-duplicate</a> <span>4</span></li></ol></div>
+  <section class="part" id="reference-data-the-rules-need"><h2>Reference data the rules need</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Three more small full extracts: stores, subcategories, categories</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+DROP TABLE IF EXISTS stg.Store, stg.ProductSubcategory, stg.ProductCategory;
+SELECT s.BusinessEntityID AS StoreID, s.Name AS StoreName, a.City, sp.CountryRegionCode, SYSDATETIME() AS ExtractedAt
+INTO stg.Store
+FROM AdventureWorks2022.Sales.Store s
+LEFT JOIN AdventureWorks2022.Person.BusinessEntityAddress bea
+       ON bea.BusinessEntityID = s.BusinessEntityID AND bea.AddressTypeID = 3     -- 3 = Main Office
+LEFT JOIN AdventureWorks2022.Person.Address a        ON a.AddressID = bea.AddressID
+LEFT JOIN AdventureWorks2022.Person.StateProvince sp ON sp.StateProvinceID = a.StateProvinceID;
+SET @n = @@ROWCOUNT; INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.Store', @n, @t0, SYSDATETIME());
+SELECT ProductSubcategoryID, ProductCategoryID, Name INTO stg.ProductSubcategory FROM AdventureWorks2022.Production.ProductSubcategory;
+SET @n = @@ROWCOUNT; INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.ProductSubcategory', @n, @t0, SYSDATETIME());
+SELECT ProductCategoryID, Name INTO stg.ProductCategory FROM AdventureWorks2022.Production.ProductCategory;
+SET @n = @@ROWCOUNT; INSERT INTO etl.LoadLog VALUES ('Extract full', 'stg.ProductCategory', @n, @t0, SYSDATETIME());
+SELECT LogID, Step, TableName, RowsAffected FROM etl.LoadLog WHERE LogID &gt; 6;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three lookup tables the transform rules need, extracted in full with the Day 22 pattern: 701 stores (with the city and country of each store's main office, AddressTypeID 3), 37 product subcategories and 4 categories. One DECLARE and one log row per table; the log now has rows 7 to 9 after Day 22's six. Tables this small are cheaper to copy whole every time than to track changes for.</p><p class="pin"><span aria-hidden="true">📍</span> Lookups (stores, categories) are small: extract them in full every time.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="transform-rules-on-the-real-data-written-as-views"><h2>Transform rules on the real data, written as views</h2>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. The customer rules: type, name, city and country with no NULLs</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER VIEW etl.vCustomer AS
+SELECT c.CustomerID,
+       CASE WHEN c.PersonID IS NULL THEN 'Store'
+            WHEN c.StoreID  IS NULL THEN 'Individual'
+            ELSE 'Store contact' END                                   AS CustomerType,
+       COALESCE(c.FirstName + ' ' + c.LastName, s.StoreName)          AS CustomerName,
+       ISNULL(s.StoreName, 'No store')                                 AS StoreName,
+       COALESCE(c.City, s.City, 'Unknown')                             AS City,
+       CASE COALESCE(c.CountryRegionCode, s.CountryRegionCode)
+            WHEN 'US' THEN 'United States' WHEN 'CA' THEN 'Canada'  WHEN 'GB' THEN 'United Kingdom'
+            WHEN 'FR' THEN 'France'        WHEN 'DE' THEN 'Germany' WHEN 'AU' THEN 'Australia'
+            ELSE 'Unknown' END                                         AS Country,
+       c.ModifiedDate
+FROM stg.Customer c
+LEFT JOIN stg.Store s ON s.StoreID = c.StoreID;
+GO
+SELECT TOP 6 * FROM etl.vCustomer ORDER BY CustomerID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The transform for customers, written as a view in the etl schema. CREATE OR ALTER makes it re-runnable, and GO ends the batch because CREATE VIEW must be alone in its batch. The rules: CustomerType says what kind of customer each row is (Store, Individual or Store contact) instead of leaving a NULL PersonID to be interpreted; CustomerName takes the person's name, or the store's name for stores; City and Country take the person's home address, or else the store's main office, or else 'Unknown'; the two-letter country code becomes a readable name. The first six customers are all stores, so their name and city come from stg.Store. No data is copied: the view runs the rules whenever it is read, and Day 24 will load the warehouse from it.</p><p class="pin"><span aria-hidden="true">📍</span> A view is a transform you can read, test and rerun: no data is copied until the load.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">6 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Did the rules close the gaps found on Day 22?</h3></div>
+        <pre><code class="language-sql">SELECT CustomerType, COUNT(*) AS Customers,
+       SUM(CASE WHEN CustomerName IS NULL THEN 1 ELSE 0 END) AS NoName,
+       SUM(CASE WHEN City = 'Unknown' THEN 1 ELSE 0 END)     AS UnknownCity,
+       SUM(CASE WHEN Country = 'Unknown' THEN 1 ELSE 0 END)  AS UnknownCountry
+FROM etl.vCustomer GROUP BY CustomerType;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 22 found 701 customers with no name and 1,336 with no city. Through the view, every one of the 19,820 customers has a name, a city and a country: 701 stores, 635 store contacts and 18,484 individual customers. The 1,336 cities were not invented or set to 'Unknown': they came from the store's own main-office address, which is a real answer. 'Unknown' is still in the rule, as a safety net for future rows.</p><p class="pin"><span aria-hidden="true">📍</span> Measure a rule after writing it: the gap should be gone, not just renamed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. The product rules: no NULL colour, category names, a price band</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER VIEW etl.vProduct AS
+SELECT p.ProductID, p.ProductNumber, p.Name AS ProductName,
+       ISNULL(p.Color, 'No colour')        AS Colour,
+       ISNULL(sc.Name, 'Not for sale')     AS Subcategory,
+       ISNULL(cat.Name, 'Not for sale')    AS Category,
+       p.StandardCost, p.ListPrice,
+       CASE WHEN p.ListPrice = 0    THEN 'No list price'
+            WHEN p.ListPrice &lt; 50   THEN 'Under 50'
+            WHEN p.ListPrice &lt; 500  THEN '50 to 499'
+            WHEN p.ListPrice &lt; 1500 THEN '500 to 1,499'
+            ELSE '1,500 and over' END     AS PriceBand,
+       p.ModifiedDate
+FROM stg.Product p
+LEFT JOIN stg.ProductSubcategory sc ON sc.ProductSubcategoryID = p.ProductSubcategoryID
+LEFT JOIN stg.ProductCategory cat   ON cat.ProductCategoryID   = sc.ProductCategoryID;
+GO
+SELECT Category, PriceBand, COUNT(*) AS Products FROM etl.vProduct GROUP BY Category, PriceBand ORDER BY Category, MIN(ListPrice);</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The product transform: a NULL colour becomes 'No colour', the subcategory and category IDs become names through two LEFT JOINs, and a price band is derived from ListPrice. 213 products have no subcategory and show as 'Not for sale': 200 of them have no list price at all (they are parts used to build bikes, not sold on their own). Bikes are all 500 or more; clothing and accessories are almost all under 500. Defining the bands here means every report and every analyst uses the same boundaries.</p><p class="pin"><span aria-hidden="true">📍</span> Derived columns (a band, a label) belong in the transform, so every report uses the same definition.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">13 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. The sales-line rules: one row per order line, ready for the fact</h3></div>
+        <pre><code class="language-sql">CREATE OR ALTER VIEW etl.vSalesLine AS
+SELECT d.SalesOrderID, d.SalesOrderDetailID,
+       YEAR(h.OrderDate) * 10000 + MONTH(h.OrderDate) * 100 + DAY(h.OrderDate) AS OrderDateKey,   -- yyyymmdd
+       h.CustomerID, d.ProductID, h.TerritoryID,
+       CASE h.OnlineOrderFlag WHEN 1 THEN 'Online' ELSE 'Reseller' END        AS SalesChannel,
+       h.SalesPersonID,                                                        -- NULL = online, mapped on Day 24
+       d.OrderQty AS Quantity, d.UnitPrice, d.UnitPriceDiscount,
+       CAST(d.LineTotal AS DECIMAL(19, 4))                                     AS SalesAmount
+FROM stg.SalesOrderDetail d
+JOIN stg.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID;
+GO
+SELECT SalesChannel, COUNT(*) AS Lines, COUNT(DISTINCT SalesOrderID) AS Orders, SUM(SalesAmount) AS Revenue
+FROM etl.vSalesLine GROUP BY SalesChannel;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One row per order line, with the order's date, customer, territory and channel brought down from the header. OrderDateKey is the yyyymmdd integer that joins to a date dimension (Day 20). OnlineOrderFlag becomes a word, 'Online' or 'Reseller'. 121,317 lines in total (60,398 online, 60,919 reseller) from 31,465 orders, the same as the extract. The money check found something: Online 29,358,677.2207 plus Reseller 80,487,704.2043 is 109,846,381.4250, while the extracted LineTotal adds up to 109,846,381.3999. LineTotal is stored with 6 decimals; casting each line to DECIMAL(19,4) rounds it, and 121,317 small roundings add up to 2.5 cents. That is acceptable for a sales report, but it has to be a decision, written down, not a surprise found later. Online revenue matches FactInternetSales exactly (Day 15).</p><p class="pin"><span aria-hidden="true">📍</span> The transform must not create or lose money: check the total against the extract.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Building a date key: FORMAT is easy to read and slow</h3></div>
+        <pre><code class="language-sql">DECLARE @t DATETIME2(3), @k INT, @a INT, @b INT;
+SET @t = SYSDATETIME();
+SELECT @k = MAX(CONVERT(INT, FORMAT(h.OrderDate, 'yyyyMMdd')))
+FROM stg.SalesOrderDetail d JOIN stg.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID;
+SET @a = DATEDIFF(millisecond, @t, SYSDATETIME());
+SET @t = SYSDATETIME();
+SELECT @k = MAX(YEAR(h.OrderDate) * 10000 + MONTH(h.OrderDate) * 100 + DAY(h.OrderDate))
+FROM stg.SalesOrderDetail d JOIN stg.SalesOrderHeader h ON h.SalesOrderID = d.SalesOrderID;
+SET @b = DATEDIFF(millisecond, @t, SYSDATETIME());
+SELECT @a AS FormatMs, @b AS ArithmeticMs, @k AS LastDateKey;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two ways to build the same date key for all 121,317 lines, timed with SYSDATETIME before and after each. FORMAT(OrderDate, 'yyyyMMdd') is the easiest to read but calls the .NET formatting library once per row; YEAR() * 10000 + MONTH() * 100 + DAY() is plain integer arithmetic. Both give the same last key, 20140630. In the run shown, FORMAT took 513 milliseconds and the arithmetic 180: almost three times as long for the same answer (the exact figures vary from run to run). On a fact load with millions of rows, that difference is minutes. This is why the view in step 5 uses the arithmetic version.</p><p class="pin"><span aria-hidden="true">📍</span> FORMAT() runs .NET code on every row; plain arithmetic does the same job far faster.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="a-messy-source-web-sign-ups-loaded-from-a-csv"><h2>A messy source: web sign-ups loaded from a CSV</h2>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. The raw file, loaded as text: every column is NVARCHAR</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS stg.WebSignupRaw;
+CREATE TABLE stg.WebSignupRaw (
+    SignupID NVARCHAR(10), FullName NVARCHAR(100), Email NVARCHAR(100), Phone NVARCHAR(30),
+    City NVARCHAR(50), SignupDate NVARCHAR(30), FirstOrderAmount NVARCHAR(30));
+INSERT INTO stg.WebSignupRaw VALUES
+ ('1', '  ayesha KHAN ', 'Ayesha.Khan@Gmail.com ', '0300-1111111',    'lahore',      '2026-11-02', '1,200'),
+ ('2', 'Bilal Ahmed',    'bilal.ahmed@yahoo.com',  '+92 301 2222222', 'LHR',         '02/11/2026', 'Rs 850'),
+ ('3', 'sara malik',     'SARA.MALIK@HOTMAIL.COM', '03213333333',     ' Islamabad',  '3 Nov 2026', '500'),
+ ('4', 'Usman Tariq',    'usman.tariq@gmail',      '0333-444444',     'Karachi',     '2026-11-03', '2000'),
+ ('5', 'Hina Raza',      '',                       '0345 5555555',    'Lahor',       '2026-11-04', ''),
+ ('6', 'AYESHA KHAN',    'ayesha.khan@gmail.com',  '03001111111',     'Lahore',      '2026-11-05', '950'),
+ ('7', 'Zain Ali',       'zain.ali@outlook.com',   '0312-6666666',    'NULL',        '2026-13-45', 'abc'),
+ ('8', 'Fatima Noor',    'fatima noor@gmail.com',  '0300 7777777',    'islamabad',   '05/11/2026', '1,500.50'),
+ ('9', 'Omar Farooq',    'omar.farooq@gmail.com',  '+923008888888',   'Rawalpindi',  '6 Nov 2026', ' 300 '),
+ ('10','Sana Iqbal',     'sana.iqbal@gmail.com',   '0300-9999999',    'RWP',         '2026-11-06', '0'),
+ ('11','bilal ahmed',    'Bilal.Ahmed@Yahoo.com',  '0301-2222222',    'Lahore',      '2026-11-07', '400'),
+ ('12','Maryam Shah',    'maryam.shah@gmail.com',  '0322-1212121',    'Karachi ',    '07-11-2026', '650');
+SELECT * FROM stg.WebSignupRaw;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A second source, the kind a website or a partner sends as a CSV file: 12 sign-ups typed by people. Every column is NVARCHAR, including the ID, the date and the amount, because a file can contain anything and a typed column would reject the whole file at the first bad value. The mess is deliberate and realistic: spaces before and after names, mixed case, two people entered twice with different spellings, a blank email, an email with a space, phone numbers in five formats, city abbreviations and a typo, the text 'NULL', dates in four formats including an impossible one (month 13), and amounts with commas and 'Rs'.</p><p class="pin"><span aria-hidden="true">📍</span> Load files as text first. Converting during the load means one bad value stops the whole file.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Profile the mess</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS Rows,
+       COUNT(DISTINCT LOWER(TRIM(Email))) AS DistinctEmails,
+       SUM(CASE WHEN TRIM(Email) = '' THEN 1 ELSE 0 END) AS BlankEmails,
+       COUNT(DISTINCT City) AS CitySpellings,
+       SUM(CASE WHEN TRY_CONVERT(DATE, SignupDate, 23) IS NULL THEN 1 ELSE 0 END) AS NotIsoDates,
+       SUM(CASE WHEN TRY_CAST(FirstOrderAmount AS DECIMAL(10,2)) IS NULL THEN 1 ELSE 0 END) AS NotNumbers
+FROM stg.WebSignupRaw;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The profile before any cleaning. 12 rows but only 10 distinct emails (after lower-casing and trimming), so two people are duplicated; the blank email counts as one of the 10. 9 different city spellings for 5 real cities: the server's collation ignores case and trailing spaces, so 'lahore' and 'Lahore' already count as one, but ' Islamabad' with a leading space does not. 4 dates are not in ISO form (yyyy-mm-dd) and 5 amounts are not plain numbers. These counts are the targets: after cleaning, each should reach zero or be explained.</p><p class="pin"><span aria-hidden="true">📍</span> Count each kind of problem before fixing it, so you can prove the fix worked.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. Convert the dates the strict way: CONVERT stops at the first bad value</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, SignupDate, CONVERT(DATE, SignupDate, 23) AS AsDate FROM stg.WebSignupRaw;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>CONVERT with style 23 (yyyy-mm-dd) cannot read '02/11/2026' in row 2, and the whole statement fails with 'Conversion failed' (Msg 241): not one row is returned, not even the ones that were fine. In a load procedure, one badly typed date in a file of a million rows would stop the load and nothing would be loaded. The error is expected; it is the reason for the next step.</p><p class="pin"><span aria-hidden="true">📍</span> CONVERT fails the whole query on one bad row. In a load, that is the whole night's run.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res err">Error (expected): Conversion failed when converting date and/or time from character string.</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. TRY_CONVERT, one format at a time</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, SignupDate,
+       TRY_CONVERT(DATE, SignupDate, 23)  AS Iso_yyyy_mm_dd,
+       TRY_CONVERT(DATE, SignupDate, 103) AS British_dd_mm_yyyy,
+       TRY_CONVERT(DATE, SignupDate, 105) AS Italian_dd_mm_yyyy,
+       TRY_CONVERT(DATE, SignupDate, 106) AS dd_mon_yyyy,
+       COALESCE(TRY_CONVERT(DATE, SignupDate, 23),  TRY_CONVERT(DATE, SignupDate, 103),
+                TRY_CONVERT(DATE, SignupDate, 105), TRY_CONVERT(DATE, SignupDate, 106)) AS CleanDate
+FROM stg.WebSignupRaw;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TRY_CONVERT returns NULL instead of failing, so each format can be tried in turn: 23 (ISO), 103 (British dd/mm/yyyy), 105 (Italian dd-mm-yyyy) and 106 (dd mon yyyy). COALESCE takes the first one that works. 11 of 12 dates are recovered; '2026-13-45' fits no format and stays NULL. Two things to notice. First, the style numbers are hints, not strict patterns: '3 Nov 2026' is accepted under every style. Second, '02/11/2026' is read as 2 November because styles 103 and 105 are day-first. Style 101 (US, month-first) would have read it as 11 February. The source is a Pakistani website, so day-first is the right rule, and that choice belongs in the documentation.</p><p class="pin"><span aria-hidden="true">📍</span> Try each format the source is known to use; anything that fits none stays NULL and is flagged.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. Names: trim, collapse spaces, capitalise each word</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, FullName AS Raw,
+       UPPER(LEFT(f.First, 1)) + LOWER(SUBSTRING(f.First, 2, 50)) + ' ' +
+       UPPER(LEFT(f.Last, 1))  + LOWER(SUBSTRING(f.Last, 2, 50))  AS CleanName
+FROM stg.WebSignupRaw
+CROSS APPLY (SELECT LTRIM(RTRIM(REPLACE(FullName, '  ', ' '))) AS n) t
+CROSS APPLY (SELECT LEFT(t.n, CHARINDEX(' ', t.n + ' ') - 1) AS First,
+                    LTRIM(SUBSTRING(t.n, CHARINDEX(' ', t.n + ' ') + 1, 50)) AS Last) f;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The first CROSS APPLY trims the name and replaces double spaces with single ones; the second splits it at the first space into First and Last. Each part is then rebuilt with the first letter in upper case and the rest in lower case. '  ayesha KHAN ' and 'AYESHA KHAN' both become 'Ayesha Khan', and 'bilal ahmed' becomes 'Bilal Ahmed'. This simple rule would get names like 'McDonald' or 'van der Berg' wrong, which is acceptable for this source but worth knowing.</p><p class="pin"><span aria-hidden="true">📍</span> CROSS APPLY gives a computed value a name, so the next step can use it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. Emails: lower case, no spaces, and a basic validity test</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, Email AS Raw, e.Clean,
+       CASE WHEN e.Clean = '' THEN 'Blank'
+            WHEN e.Clean LIKE '% %' THEN 'Contains a space'
+            WHEN e.Clean NOT LIKE '_%@_%._%' THEN 'No domain ending'
+            ELSE 'OK' END AS EmailCheck
+FROM stg.WebSignupRaw
+CROSS APPLY (SELECT LOWER(TRIM(Email)) AS Clean) e;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>TRIM removes the space after 'Ayesha.Khan@Gmail.com ' and LOWER makes 'SARA.MALIK@HOTMAIL.COM' readable and comparable. Email addresses are not case-sensitive in practice, so lower case is safe. Three emails cannot be fixed by rules: row 4 has no domain ending ('@gmail' with no '.com'), row 5 is blank and row 8 has a space inside it ('fatima noor@gmail.com'). Guessing a fix (adding '.com', removing the space) could send a customer's data to a stranger, so they are flagged, not repaired. The LIKE pattern '_%@_%._%' means: at least one character, an @, at least one character, a dot, at least one character.</p><p class="pin"><span aria-hidden="true">📍</span> Clean what can be cleaned (case, spaces at the ends); flag what cannot (a space inside).</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. Phones: keep the digits, turn +92 into 0, check the length, format one way</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, Phone AS Raw, d.Digits,
+       CASE WHEN LEN(d.Digits) = 11 AND LEFT(d.Digits, 2) = '03'
+            THEN LEFT(d.Digits, 4) + '-' + RIGHT(d.Digits, 7) END AS CleanPhone
+FROM stg.WebSignupRaw
+CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(REPLACE(Phone, '+', ''), '-', ''), ' ', ''), '(', '') AS s) x
+CROSS APPLY (SELECT CASE WHEN LEFT(x.s, 2) = '92' AND LEN(x.s) = 12 THEN '0' + SUBSTRING(x.s, 3, 10) ELSE x.s END AS Digits) d;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Nested REPLACEs strip '+', '-', spaces and brackets, leaving only digits. A number starting with 92 and 12 digits long is an international form ('+92 301 2222222'), so 92 is replaced by 0. A valid Pakistani mobile number is then 11 digits starting with 03, and is stored in one format, 0300-1234567. Five different spellings of numbers become one format, and both of Bilal's rows now show the same number (0301-2222222). Row 4 has only 10 digits ('0333-444444'), so it gets no clean phone.</p><p class="pin"><span aria-hidden="true">📍</span> Store one format. Five ways of writing the same number make it five different customers.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Cities: a mapping table for known spellings</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS etl.CityMap;
+CREATE TABLE etl.CityMap (Variant NVARCHAR(50) PRIMARY KEY, City NVARCHAR(50) NOT NULL);
+INSERT INTO etl.CityMap VALUES
+ ('lahore', 'Lahore'), ('lhr', 'Lahore'), ('lahor', 'Lahore'),
+ ('islamabad', 'Islamabad'), ('isb', 'Islamabad'),
+ ('karachi', 'Karachi'), ('khi', 'Karachi'),
+ ('rawalpindi', 'Rawalpindi'), ('rwp', 'Rawalpindi');
+SELECT r.SignupID, r.City AS Raw, ISNULL(m.City, 'Unknown') AS CleanCity
+FROM stg.WebSignupRaw r
+LEFT JOIN etl.CityMap m ON m.Variant = LOWER(TRIM(r.City));</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A small table, etl.CityMap, lists every known spelling (in lower case) and the city it means. The raw city is trimmed and lower-cased, then looked up: 'LHR', 'Lahor' and 'lahore' all become Lahore, 'RWP' becomes Rawalpindi. The text 'NULL' in row 7 matches nothing and becomes 'Unknown'. When a new spelling turns up next month, someone adds a row to CityMap; nobody has to change the code. The LEFT JOIN keeps rows with unknown spellings instead of dropping them.</p><p class="pin"><span aria-hidden="true">📍</span> A mapping table is data, not code: the business can add a spelling without a code change.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. Amounts: strip commas and &quot;Rs&quot;, then TRY_CAST</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, FirstOrderAmount AS Raw,
+       TRY_CAST(TRIM(REPLACE(REPLACE(FirstOrderAmount, ',', ''), 'Rs', '')) AS DECIMAL(10, 2)) AS CleanAmount,
+       CASE WHEN NULLIF(TRIM(FirstOrderAmount), '') IS NULL THEN 'Blank'
+            WHEN TRY_CAST(TRIM(REPLACE(REPLACE(FirstOrderAmount, ',', ''), 'Rs', '')) AS DECIMAL(10, 2)) IS NULL THEN 'Not a number'
+            ELSE 'OK' END AS AmountCheck
+FROM stg.WebSignupRaw;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Commas and 'Rs' are removed, the result is trimmed and TRY_CAST turns it into a DECIMAL. '1,200' becomes 1200.00, 'Rs 850' becomes 850.00 and '1,500.50' becomes 1500.50. Two amounts cannot be read, and they are different problems: row 5 is blank (the customer did not order) and row 7 is 'abc' (someone typed rubbish). A report might treat blank as zero, but 'abc' needs checking at the source. Row 10's '0' is a real value and stays 0.00.</p><p class="pin"><span aria-hidden="true">📍</span> Blank and &quot;not a number&quot; are different problems; label them differently.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">12 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="put-the-rules-together-clean-reject-de-duplicate"><h2>Put the rules together: clean, reject, de-duplicate</h2>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>16. Rejects go to their own table, with the reason</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS stg.WebSignupReject;
+WITH Cleaned AS (
+    SELECT CAST(r.SignupID AS INT) AS SignupID,
+           UPPER(LEFT(f.First, 1)) + LOWER(SUBSTRING(f.First, 2, 50)) + ' ' +
+           UPPER(LEFT(f.Last, 1))  + LOWER(SUBSTRING(f.Last, 2, 50))  AS FullName,
+           LOWER(TRIM(r.Email)) AS Email,
+           CASE WHEN LEN(d.Digits) = 11 AND LEFT(d.Digits, 2) = '03' THEN LEFT(d.Digits, 4) + '-' + RIGHT(d.Digits, 7) END AS Phone,
+           ISNULL(m.City, 'Unknown') AS City,
+           COALESCE(TRY_CONVERT(DATE, r.SignupDate, 23),  TRY_CONVERT(DATE, r.SignupDate, 103),
+                    TRY_CONVERT(DATE, r.SignupDate, 105), TRY_CONVERT(DATE, r.SignupDate, 106)) AS SignupDate,
+           TRY_CAST(TRIM(REPLACE(REPLACE(r.FirstOrderAmount, ',', ''), 'Rs', '')) AS DECIMAL(10, 2)) AS FirstOrderAmount
+    FROM stg.WebSignupRaw r
+    CROSS APPLY (SELECT LTRIM(RTRIM(REPLACE(r.FullName, '  ', ' '))) AS n) t
+    CROSS APPLY (SELECT LEFT(t.n, CHARINDEX(' ', t.n + ' ') - 1) AS First, LTRIM(SUBSTRING(t.n, CHARINDEX(' ', t.n + ' ') + 1, 50)) AS Last) f
+    CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(r.Phone, '+', ''), '-', ''), ' ', '') AS s) x
+    CROSS APPLY (SELECT CASE WHEN LEFT(x.s, 2) = '92' AND LEN(x.s) = 12 THEN '0' + SUBSTRING(x.s, 3, 10) ELSE x.s END AS Digits) d
+    LEFT JOIN etl.CityMap m ON m.Variant = LOWER(TRIM(r.City))
+), Checked AS (
+    SELECT *, CASE WHEN Email = '' THEN 'Blank email'
+                   WHEN Email LIKE '% %' OR Email NOT LIKE '_%@_%._%' THEN 'Invalid email'
+                   WHEN Phone IS NULL THEN 'Invalid phone' END AS RejectReason
+    FROM Cleaned
+)
+SELECT r.*, c.RejectReason, SYSDATETIME() AS RejectedAt
+INTO stg.WebSignupReject
+FROM Checked c JOIN stg.WebSignupRaw r ON CAST(r.SignupID AS INT) = c.SignupID
+WHERE c.RejectReason IS NOT NULL;
+SELECT SignupID, FullName, Email, Phone, RejectReason FROM stg.WebSignupReject;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>All the rules from steps 10 to 15 combined in one CTE (Cleaned), then a second CTE (Checked) decides whether each row can be used. Three rows fail: Usman (email has no domain ending; his phone is also too short, but the first reason found is reported), Hina (blank email) and Fatima (space in the email). They are copied into stg.WebSignupReject with their original raw values and the reason, by joining back to the raw table on SignupID. Nothing is thrown away: the reject table is the to-do list for whoever owns the website.</p><p class="pin"><span aria-hidden="true">📍</span> Never drop a bad row silently: park it with a reason so someone can fix the source.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>17. The clean table: valid rows only, one row per email, newest sign-up wins</h3></div>
+        <pre><code class="language-sql">DROP TABLE IF EXISTS stg.WebSignupClean;
+WITH Cleaned AS (
+    SELECT CAST(r.SignupID AS INT) AS SignupID,
+           UPPER(LEFT(f.First, 1)) + LOWER(SUBSTRING(f.First, 2, 50)) + ' ' +
+           UPPER(LEFT(f.Last, 1))  + LOWER(SUBSTRING(f.Last, 2, 50))  AS FullName,
+           LOWER(TRIM(r.Email)) AS Email,
+           CASE WHEN LEN(d.Digits) = 11 AND LEFT(d.Digits, 2) = '03' THEN LEFT(d.Digits, 4) + '-' + RIGHT(d.Digits, 7) END AS Phone,
+           ISNULL(m.City, 'Unknown') AS City,
+           COALESCE(TRY_CONVERT(DATE, r.SignupDate, 23),  TRY_CONVERT(DATE, r.SignupDate, 103),
+                    TRY_CONVERT(DATE, r.SignupDate, 105), TRY_CONVERT(DATE, r.SignupDate, 106)) AS SignupDate,
+           TRY_CAST(TRIM(REPLACE(REPLACE(r.FirstOrderAmount, ',', ''), 'Rs', '')) AS DECIMAL(10, 2)) AS FirstOrderAmount
+    FROM stg.WebSignupRaw r
+    CROSS APPLY (SELECT LTRIM(RTRIM(REPLACE(r.FullName, '  ', ' '))) AS n) t
+    CROSS APPLY (SELECT LEFT(t.n, CHARINDEX(' ', t.n + ' ') - 1) AS First, LTRIM(SUBSTRING(t.n, CHARINDEX(' ', t.n + ' ') + 1, 50)) AS Last) f
+    CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(r.Phone, '+', ''), '-', ''), ' ', '') AS s) x
+    CROSS APPLY (SELECT CASE WHEN LEFT(x.s, 2) = '92' AND LEN(x.s) = 12 THEN '0' + SUBSTRING(x.s, 3, 10) ELSE x.s END AS Digits) d
+    LEFT JOIN etl.CityMap m ON m.Variant = LOWER(TRIM(r.City))
+), Checked AS (
+    SELECT *, CASE WHEN Email = '' THEN 'Blank email'
+                   WHEN Email LIKE '% %' OR Email NOT LIKE '_%@_%._%' THEN 'Invalid email'
+                   WHEN Phone IS NULL THEN 'Invalid phone' END AS RejectReason
+    FROM Cleaned
+), Ranked AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY Email ORDER BY SignupDate DESC, SignupID DESC) AS rn
+    FROM Checked WHERE RejectReason IS NULL
+)
+SELECT SignupID, FullName, Email, Phone, City, SignupDate, FirstOrderAmount
+INTO stg.WebSignupClean FROM Ranked WHERE rn = 1;
+SELECT * FROM stg.WebSignupClean ORDER BY SignupID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same CTEs, then ROW_NUMBER (Day 8) numbers the valid rows within each email address, newest sign-up first. Only number 1 is kept. Ayesha signed up twice ('Ayesha.Khan@Gmail.com ' on 2 November and 'ayesha.khan@gmail.com' on 5 November); her 5 November row (ID 6) is kept. Bilal's 7 November row (ID 11) beats his 2 November row. The raw emails were different strings, so de-duplicating before cleaning would have kept both. The result is 7 clean rows with proper names, one phone format, real cities, real dates and real numbers.</p><p class="pin"><span aria-hidden="true">📍</span> De-duplicate on the cleaned value: &quot;Ayesha.Khan@Gmail.com &quot; and &quot;ayesha.khan@gmail.com&quot; are one person.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">7 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>18. Account for every raw row</h3></div>
+        <pre><code class="language-sql">SELECT (SELECT COUNT(*) FROM stg.WebSignupRaw)    AS RawRows,
+       (SELECT COUNT(*) FROM stg.WebSignupClean)  AS CleanRows,
+       (SELECT COUNT(*) FROM stg.WebSignupReject) AS RejectedRows,
+       (SELECT COUNT(*) FROM stg.WebSignupRaw) - (SELECT COUNT(*) FROM stg.WebSignupClean)
+         - (SELECT COUNT(*) FROM stg.WebSignupReject) AS DuplicatesRemoved;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>12 raw rows = 7 clean + 3 rejected + 2 duplicates removed. Every row is accounted for. This one line is the transform's equivalent of Day 22's reconciliation: if the three numbers on the right ever stop adding up to the one on the left, a rule has lost or duplicated rows.</p><p class="pin"><span aria-hidden="true">📍</span> Raw = clean + rejected + duplicates. If it does not add up, a row went missing.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>19. What still needs a person: NULLs left by the rules</h3></div>
+        <pre><code class="language-sql">SELECT SignupID, FullName, City, SignupDate, FirstOrderAmount,
+       CONCAT_WS(', ', CASE WHEN City = 'Unknown' THEN 'city not recognised' END,
+                       CASE WHEN SignupDate IS NULL THEN 'date not recognised' END,
+                       CASE WHEN FirstOrderAmount IS NULL THEN 'amount missing or not a number' END) AS Warnings
+FROM stg.WebSignupClean
+WHERE City = 'Unknown' OR SignupDate IS NULL OR FirstOrderAmount IS NULL;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>One clean row is usable but not perfect: Zain Ali (ID 7) has a valid email and phone, but his city was the text 'NULL', his date '2026-13-45' is impossible and his amount was 'abc'. Rejecting him would lose a real customer, so he is kept, and this query lists what is still wrong in plain words. CONCAT_WS joins only the warnings that apply, separated by commas, and skips the NULLs.</p><p class="pin"><span aria-hidden="true">📍</span> Some rows are usable but imperfect: keep them, and list what is still wrong.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>The rules, written down</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Column</th><th>Source</th><th>Rule</th><th>If the rule fails</th></tr></thead><tbody><tr><td>CustomerType</td><td>stg.Customer</td><td>No PersonID = Store; no StoreID = Individual; both = Store contact</td><td>Cannot fail</td></tr><tr><td>CustomerName</td><td>stg.Customer, stg.Store</td><td>First + last name, else the store name</td><td>Stays NULL; checked on Day 25</td></tr><tr><td>City, Country</td><td>stg.Customer, stg.Store</td><td>Home address, else store main office; country code to name</td><td>"Unknown"</td></tr><tr><td>Colour</td><td>stg.Product</td><td>NULL becomes "No colour"</td><td>Cannot fail</td></tr><tr><td>Category, Subcategory</td><td>stg.ProductSubcategory, stg.ProductCategory</td><td>ID to name</td><td>"Not for sale"</td></tr><tr><td>PriceBand</td><td>stg.Product</td><td>Under 50, 50 to 499, 500 to 1,499, 1,500 and over; 0 = No list price</td><td>Cannot fail</td></tr><tr><td>OrderDateKey</td><td>stg.SalesOrderHeader</td><td>YEAR*10000 + MONTH*100 + DAY (not FORMAT: slower)</td><td>Cannot fail (no NULL dates)</td></tr><tr><td>SalesChannel</td><td>stg.SalesOrderHeader</td><td>OnlineOrderFlag 1 = Online, 0 = Reseller</td><td>Cannot fail</td></tr><tr><td>SalesAmount</td><td>stg.SalesOrderDetail</td><td>LineTotal as DECIMAL(19,4); total moves by 0.025 in 109.8 million (accepted)</td><td>Cannot fail</td></tr><tr><td>Web: FullName</td><td>stg.WebSignupRaw</td><td>Trim, single spaces, capitalise first and last name</td><td>Kept as typed</td></tr><tr><td>Web: Email</td><td>stg.WebSignupRaw</td><td>Trim, lower case; must match _%@_%._% with no spaces</td><td><strong>Reject</strong></td></tr><tr><td>Web: Phone</td><td>stg.WebSignupRaw</td><td>Digits only, +92 to 0, 11 digits starting 03, stored as 0300-1234567</td><td><strong>Reject</strong></td></tr><tr><td>Web: City</td><td>stg.WebSignupRaw</td><td>Trim, lower case, look up in etl.CityMap</td><td>"Unknown", listed for review</td></tr><tr><td>Web: SignupDate</td><td>stg.WebSignupRaw</td><td>Formats 23, 103, 105, 106 in that order; day before month</td><td>NULL, listed for review</td></tr><tr><td>Web: FirstOrderAmount</td><td>stg.WebSignupRaw</td><td>Remove commas and "Rs", TRY_CAST to DECIMAL(10,2)</td><td>NULL, listed for review</td></tr><tr><td>Web: duplicates</td><td>stg.WebSignupRaw</td><td>One row per cleaned email; newest sign-up wins</td><td>Older row dropped and counted</td></tr></tbody></table></div><h2>Self-test: answers</h2><div class="tip"><strong>CONVERT or TRY_CONVERT in a load?</strong> TRY_CONVERT, then check for the NULLs it leaves. CONVERT stops the whole statement at the first bad value (step 9); TRY_CONVERT lets the good rows through and makes the bad ones countable.<br><br><strong>Why de-duplicate after cleaning, not before?</strong> Duplicates rarely match exactly. "Ayesha.Khan@Gmail.com " and "ayesha.khan@gmail.com" are different strings and the same person; only the cleaned values show it.<br><br><strong>Reject, or keep with a warning?</strong> Reject a row when the warehouse cannot use it or could misuse it: no valid email or phone means no way to identify or contact the person. Keep it with a warning when it is still a real, usable customer and only a detail is missing (Zain Ali: unknown city, unreadable date and amount).<br><br><strong>Why views for the AdventureWorks rules?</strong> A view stores the rule, not a copy of the data, so it always reflects the latest extract, can be read and tested on its own (step 3), and the load on Day 24 becomes a simple INSERT ... SELECT from the view.<br><br><strong>Why is "02/11/2026" 2 November here?</strong> Because the rule says day-first (styles 103 and 105), which is the convention of the source (a Pakistani website). The same text from a US system would mean 11 February. A transform rule for dates is a decision about the source, and must be written down.</div>
+  <nav class="pager"><a href="../day22/">← Day 22: ETL vs ELT, staging, full and incremental extract</a><a href="../day24/">Day 24: Load: dimensions, history and the fact table →</a></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 24: Load: dimensions, history and the fact table · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/">Day 21</a><a href="../day22/">Day 22</a><a href="../day23/">Day 23</a><a href="../day24/" aria-current="page">Day 24</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 4 · ETL and Data Quality</a> / Day 24</p>
+  <h1>Day 24: Load: dimensions, history and the fact table</h1>
+  <p class="meta">Tue 17 November 2026 · 20 queries · run on AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> load the star schema from the transformed views, with surrogate keys, a Type 1 and a Type 2 dimension, and a fact table whose key lookups never lose a row.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;MERGE (Transact-SQL)&quot; and &quot;OUTPUT clause&quot;; Kimball Group &quot;Slowly Changing Dimension Types 0 to 7&quot; and &quot;Surrogate Keys&quot;.</p>
+  </div>
+  <div class="tip"><strong>The L in ELT:</strong> Day 22 copied the sources into staging and Day 23 wrote the rules as views. Today the rules are loaded into the finished star schema in a new schema, <strong>dw</strong>: three dimensions and one fact table. Three ideas carry the whole day. A <strong>surrogate key</strong> is the warehouse's own number for a row. A <strong>slowly changing dimension</strong> decides what happens when a customer or product changes: overwrite it (Type 1) or keep the old version (Type 2). And an <strong>Unknown member</strong> (key -1) catches facts whose dimension row has not arrived yet, so they are never lost.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Table</th><th>Kind</th><th>Grain (one row per...)</th><th>Loaded from</th><th>How changes are handled</th></tr></thead><tbody><tr><td>dw.DimDate</td><td>Dimension</td><td>calendar day, 2011 to 2026</td><td>Generated</td><td>Never changes</td></tr><tr><td>dw.DimCustomer</td><td>Dimension, Type 1</td><td>customer</td><td>etl.vCustomer</td><td>MERGE: overwrite, no history</td></tr><tr><td>dw.DimProduct</td><td>Dimension, Type 2</td><td>version of a product</td><td>etl.vProduct</td><td>Close the old version, add a new one</td></tr><tr><td>dw.FactSales</td><td>Fact</td><td>order line</td><td>etl.vSalesLine</td><td>Insert new lines only; repair Unknown keys</td></tr></tbody></table></div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#the-date-and-customer-dimensions-type-1">The date and customer dimensions (Type 1)</a> <span>5</span></li><li><a href="#the-product-dimension-keeps-history-type-2">The product dimension keeps history (Type 2)</a> <span>6</span></li><li><a href="#the-fact-table-surrogate-key-lookups">The fact table: surrogate key lookups</a> <span>9</span></li></ol></div>
+  <section class="part" id="the-date-and-customer-dimensions-type-1"><h2>The date and customer dimensions (Type 1)</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. Create the dw schema and load a date dimension</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+IF SCHEMA_ID('dw') IS NULL EXEC('CREATE SCHEMA dw');
+DROP TABLE IF EXISTS dw.FactSales, dw.DimDate, dw.DimCustomer, dw.DimProduct;   -- fact first: it points at the others
+CREATE TABLE dw.DimDate (
+    DateKey   INT         NOT NULL PRIMARY KEY,      -- yyyymmdd, the same rule as etl.vSalesLine
+    FullDate  DATE        NOT NULL,
+    [Year]    SMALLINT    NOT NULL,
+    [Quarter] TINYINT     NOT NULL,
+    [Month]   TINYINT     NOT NULL,
+    MonthName VARCHAR(10) NOT NULL,
+    DayName   VARCHAR(10) NOT NULL,
+    IsWeekend BIT         NOT NULL);
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+WITH n AS (SELECT TOP (DATEDIFF(day, '2011-01-01', '2026-12-31') + 1)
+                  ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) - 1 AS i
+           FROM sys.all_objects a CROSS JOIN sys.all_objects b),
+     d AS (SELECT DATEADD(day, i, CAST('2011-01-01' AS DATE)) AS FullDate FROM n)
+INSERT INTO dw.DimDate
+SELECT YEAR(FullDate) * 10000 + MONTH(FullDate) * 100 + DAY(FullDate), FullDate,
+       YEAR(FullDate), DATEPART(quarter, FullDate), MONTH(FullDate),
+       DATENAME(month, FullDate), DATENAME(weekday, FullDate),
+       CASE WHEN DATENAME(weekday, FullDate) IN ('Saturday', 'Sunday') THEN 1 ELSE 0 END
+FROM d;
+SET @n = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Load full', 'dw.DimDate', @n, @t0, SYSDATETIME());
+SELECT COUNT(*) AS Days, MIN(FullDate) AS FirstDay, MAX(FullDate) AS LastDay,
+       SUM(CAST(IsWeekend AS INT)) AS WeekendDays FROM dw.DimDate;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The warehouse gets its own schema, dw, next to stg (raw copies) and etl (rules and logs). The DROP line lists the fact table first because, from step 12, it has foreign keys pointing at the dimensions, and SQL Server will not drop a table that another table still references. The date dimension is not extracted from anywhere: it is generated. The CTE n produces one number per day (sys.all_objects cross-joined with itself is simply a quick source of enough rows), and d turns each number into a date. 5,844 rows cover every day from 1 January 2011 to 31 December 2026 (16 years, 4 of them leap years), including the 1,670 Saturdays and Sundays. A date dimension must contain days with no sales too, otherwise a report of sales per day would silently skip them. DateKey uses exactly the same yyyymmdd rule as etl.vSalesLine (Day 23), so the two will join.</p><p class="pin"><span aria-hidden="true">📍</span> A date dimension is generated, not extracted: one row per calendar day, including days with no sales.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. The customer dimension: a surrogate key and an Unknown member</h3></div>
+        <pre><code class="language-sql">CREATE TABLE dw.DimCustomer (
+    CustomerKey  INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,   -- surrogate key: the warehouse's own number
+    CustomerID   INT           NOT NULL UNIQUE,             -- business key: the source's number
+    CustomerType VARCHAR(13)   NOT NULL,
+    CustomerName NVARCHAR(101) NULL,
+    StoreName    NVARCHAR(50)  NOT NULL,
+    City         NVARCHAR(30)  NOT NULL,
+    Country      VARCHAR(20)   NOT NULL,
+    LoadedAt     DATETIME2(0)  NOT NULL DEFAULT SYSDATETIME(),
+    UpdatedAt    DATETIME2(0)  NULL);
+SET IDENTITY_INSERT dw.DimCustomer ON;
+INSERT INTO dw.DimCustomer (CustomerKey, CustomerID, CustomerType, CustomerName, StoreName, City, Country)
+VALUES (-1, -1, 'Unknown', 'Unknown customer', 'Unknown', 'Unknown', 'Unknown');
+SET IDENTITY_INSERT dw.DimCustomer OFF;
+SELECT CustomerKey, CustomerID, CustomerType, CustomerName, City FROM dw.DimCustomer;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every dimension gets a surrogate key: CustomerKey, a number the warehouse invents with IDENTITY. The source's own number, CustomerID, is kept as the business key and is UNIQUE, because a Type 1 dimension has exactly one row per customer. Why not just use CustomerID? Because the warehouse may combine several sources whose numbers clash, because a source can reuse or change its numbers, and because (as the product dimension will show) one business key can need several rows. Before any real customer, one special row is inserted by hand with key -1: the Unknown member. IDENTITY_INSERT ON is needed to choose that key ourselves. Whenever a sale arrives whose customer cannot be found, it will point to -1 instead of being dropped.</p><p class="pin"><span aria-hidden="true">📍</span> The Unknown member (key -1) is where a fact goes when its customer cannot be found, instead of being lost.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. First load: MERGE inserts every customer</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @a TABLE (act NVARCHAR(10));
+MERGE dw.DimCustomer AS t
+USING etl.vCustomer AS s ON t.CustomerID = s.CustomerID
+WHEN MATCHED AND (t.CustomerType &lt;&gt; s.CustomerType OR ISNULL(t.CustomerName, '') &lt;&gt; ISNULL(s.CustomerName, '')
+               OR t.StoreName &lt;&gt; s.StoreName OR t.City &lt;&gt; s.City OR t.Country &lt;&gt; s.Country)
+  THEN UPDATE SET CustomerType = s.CustomerType, CustomerName = s.CustomerName, StoreName = s.StoreName,
+                  City = s.City, Country = s.Country, UpdatedAt = SYSDATETIME()       -- Type 1: overwrite
+WHEN NOT MATCHED BY TARGET
+  THEN INSERT (CustomerID, CustomerType, CustomerName, StoreName, City, Country)
+       VALUES (s.CustomerID, s.CustomerType, s.CustomerName, s.StoreName, s.City, s.Country)
+OUTPUT $action INTO @a;
+INSERT INTO etl.LoadLog SELECT 'Load Type 1', 'dw.DimCustomer', COUNT(*), @t0, SYSDATETIME() FROM @a;
+SELECT (SELECT COUNT(*) FROM @a WHERE act = 'INSERT') AS Inserted,
+       (SELECT COUNT(*) FROM @a WHERE act = 'UPDATE') AS Updated,
+       (SELECT COUNT(*) FROM dw.DimCustomer)          AS RowsInDimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>MERGE takes a source (etl.vCustomer, the Day 23 rules) and a target (dw.DimCustomer), matches them on the business key, and decides per row: WHEN NOT MATCHED BY TARGET (the customer is not in the warehouse yet) it inserts; WHEN MATCHED AND a column has changed it updates. OUTPUT $action records what was done to each row, into a table variable, so the load can count its own work and write it to etl.LoadLog. The first run inserts all 19,820 customers; the dimension has 19,821 rows with the Unknown member. The ISNULL in the comparison matters: comparing NULL with anything gives neither true nor false, so without it a change to or from NULL would never be noticed.</p><p class="pin"><span aria-hidden="true">📍</span> MERGE compares source and target on the business key, then inserts, updates or does nothing, row by row.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Run the same load again: nothing changes</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @a TABLE (act NVARCHAR(10));
+MERGE dw.DimCustomer AS t
+USING etl.vCustomer AS s ON t.CustomerID = s.CustomerID
+WHEN MATCHED AND (t.CustomerType &lt;&gt; s.CustomerType OR ISNULL(t.CustomerName, '') &lt;&gt; ISNULL(s.CustomerName, '')
+               OR t.StoreName &lt;&gt; s.StoreName OR t.City &lt;&gt; s.City OR t.Country &lt;&gt; s.Country)
+  THEN UPDATE SET CustomerType = s.CustomerType, CustomerName = s.CustomerName, StoreName = s.StoreName,
+                  City = s.City, Country = s.Country, UpdatedAt = SYSDATETIME()       -- Type 1: overwrite
+WHEN NOT MATCHED BY TARGET
+  THEN INSERT (CustomerID, CustomerType, CustomerName, StoreName, City, Country)
+       VALUES (s.CustomerID, s.CustomerType, s.CustomerName, s.StoreName, s.City, s.Country)
+OUTPUT $action INTO @a;
+INSERT INTO etl.LoadLog SELECT 'Load Type 1', 'dw.DimCustomer', COUNT(*), @t0, SYSDATETIME() FROM @a;
+SELECT (SELECT COUNT(*) FROM @a WHERE act = 'INSERT') AS Inserted,
+       (SELECT COUNT(*) FROM @a WHERE act = 'UPDATE') AS Updated,
+       (SELECT COUNT(*) FROM dw.DimCustomer)          AS RowsInDimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Exactly the same statement, run a second time: 0 inserted, 0 updated, still 19,821 rows. This is what re-runnable (idempotent) means, and it is the most important property of a load. A real load fails halfway, gets restarted, or is run twice by mistake; if a second run inserted every customer again, every report would double. The change condition in WHEN MATCHED is what makes the second run quiet: rows that have not changed are not even updated, so UpdatedAt keeps telling the truth about when a row last changed.</p><p class="pin"><span aria-hidden="true">📍</span> A load must be re-runnable: the second run finds nothing new and nothing changed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. A customer moves: Type 1 overwrites the old city</h3></div>
+        <pre><code class="language-sql">DECLARE @old NVARCHAR(30) = (SELECT City FROM dw.DimCustomer WHERE CustomerID = 11000);   -- before
+UPDATE stg.Customer SET City = 'Brisbane' WHERE CustomerID = 11000;   -- the next extract brings the new address
+DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @a TABLE (act NVARCHAR(10));
+MERGE dw.DimCustomer AS t
+USING etl.vCustomer AS s ON t.CustomerID = s.CustomerID
+WHEN MATCHED AND (t.CustomerType &lt;&gt; s.CustomerType OR ISNULL(t.CustomerName, '') &lt;&gt; ISNULL(s.CustomerName, '')
+               OR t.StoreName &lt;&gt; s.StoreName OR t.City &lt;&gt; s.City OR t.Country &lt;&gt; s.Country)
+  THEN UPDATE SET CustomerType = s.CustomerType, CustomerName = s.CustomerName, StoreName = s.StoreName,
+                  City = s.City, Country = s.Country, UpdatedAt = SYSDATETIME()       -- Type 1: overwrite
+WHEN NOT MATCHED BY TARGET
+  THEN INSERT (CustomerID, CustomerType, CustomerName, StoreName, City, Country)
+       VALUES (s.CustomerID, s.CustomerType, s.CustomerName, s.StoreName, s.City, s.Country)
+OUTPUT $action INTO @a;
+INSERT INTO etl.LoadLog SELECT 'Load Type 1', 'dw.DimCustomer', COUNT(*), @t0, SYSDATETIME() FROM @a;
+SELECT CustomerKey, CustomerName, @old AS OldCity, City, UpdatedAt,
+       (SELECT COUNT(*) FROM @a WHERE act = 'UPDATE') AS RowsUpdated
+FROM dw.DimCustomer WHERE CustomerID = 11000;   -- after</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Customer 11000, Jon Yang, moves from Rockhampton to Brisbane, and the next extract brings the new address into stg.Customer. The same MERGE finds one changed row and updates it: OldCity (saved in a variable before the load) is Rockhampton, City is now Brisbane, UpdatedAt is stamped and RowsUpdated is 1. His CustomerKey stays 702 (the keys were given in load order, so it is unrelated to his CustomerID), so every sale already in the warehouse still points at him. This is a Type 1 slowly changing dimension: the old value is overwritten and forgotten. All of his past sales will now be reported under Brisbane, even those made while he lived in Rockhampton. That is the right choice when the old value was a mistake or nobody needs history (a corrected spelling, a phone number); it is the wrong choice when a report must show where sales happened at the time. The red underlines and the tooltip in the editor come from IntelliSense, whose list of tables was made before the dw tables existed (Ctrl+Shift+R refreshes it); the query itself ran without errors.</p><p class="pin"><span aria-hidden="true">📍</span> Type 1 keeps one row per customer and no history: Rockhampton is gone, and old sales now show Brisbane.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="the-product-dimension-keeps-history-type-2"><h2>The product dimension keeps history (Type 2)</h2>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. The product dimension: one row per version of a product</h3></div>
+        <pre><code class="language-sql">CREATE TABLE dw.DimProduct (
+    ProductKey    INT IDENTITY(1, 1) NOT NULL PRIMARY KEY,
+    ProductID     INT          NOT NULL,     -- business key: no longer unique, one row per version
+    ProductNumber NVARCHAR(25) NOT NULL,
+    ProductName   NVARCHAR(50) NOT NULL,
+    Colour        NVARCHAR(15) NOT NULL,
+    Subcategory   NVARCHAR(50) NOT NULL,
+    Category      NVARCHAR(50) NOT NULL,
+    ListPrice     MONEY        NOT NULL,
+    PriceBand     VARCHAR(15)  NOT NULL,
+    ValidFrom     DATETIME     NOT NULL,
+    ValidTo       DATETIME     NOT NULL,     -- 9999-12-31 for the current version
+    IsCurrent     BIT          NOT NULL);
+CREATE UNIQUE INDEX UX_DimProduct_Current ON dw.DimProduct (ProductID) WHERE IsCurrent = 1;   -- one current version each
+SET IDENTITY_INSERT dw.DimProduct ON;
+INSERT INTO dw.DimProduct (ProductKey, ProductID, ProductNumber, ProductName, Colour, Subcategory, Category,
+                           ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent)
+VALUES (-1, -1, 'Unknown', 'Unknown product', 'Unknown', 'Unknown', 'Unknown', 0, 'Unknown', '1900-01-01', '9999-12-31', 1);
+SET IDENTITY_INSERT dw.DimProduct OFF;
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+INSERT INTO dw.DimProduct (ProductID, ProductNumber, ProductName, Colour, Subcategory, Category,
+                           ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent)
+SELECT ProductID, ProductNumber, ProductName, Colour, Subcategory, Category,
+       ListPrice, PriceBand, '1900-01-01', '9999-12-31', 1          -- first version: valid for all past orders
+FROM etl.vProduct;
+SET @n = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Load full', 'dw.DimProduct', @n, @t0, SYSDATETIME());
+SELECT ProductKey, ProductID, ProductName, ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent
+FROM dw.DimProduct WHERE ProductID IN (-1, 680, 1001) ORDER BY ProductID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Products are different: the business wants to know what price a product had when it was sold. So DimProduct is a Type 2 dimension. ProductID is no longer unique; instead, each row is one version of a product, valid from ValidFrom up to (not including) ValidTo, with IsCurrent marking the latest. The current version's ValidTo is 9999-12-31, so 'valid on this date' is always a simple range test with no NULLs. A filtered unique index guarantees that no product can ever have two current versions. The first load gives every product one version, valid from 1900-01-01, so that every historical order finds a version. After loading 508 products: Product 680 has key 210 at 1,431.50 and Product 1001 has key 505 at 5.99. Both are the prices from before Day 22's changes, because stg.Product was extracted before them.</p><p class="pin"><span aria-hidden="true">📍</span> Type 2 adds a new row when a tracked column changes, and dates each version.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. The changes from Day 22 never arrived: rewind the watermark</h3></div>
+        <pre><code class="language-sql">-- Day 22's second incremental run replaced the 3 changed rows with 0 before anything loaded them.
+UPDATE etl.Watermark SET LastModified = '2026-10-16 17:51:46.010'   -- exactly the Day 22 value
+WHERE TableName = 'dbo.Product';
+DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @wm DATETIME = (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product');
+DROP TABLE IF EXISTS stg.ProductDelta;
+SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID, ModifiedDate,
+       SYSDATETIME() AS ExtractedAt
+INTO stg.ProductDelta
+FROM dbo.Product WHERE ModifiedDate &gt; @wm;
+DECLARE @n INT = @@ROWCOUNT;
+UPDATE etl.Watermark SET LastModified = ISNULL((SELECT MAX(ModifiedDate) FROM stg.ProductDelta), @wm)
+WHERE TableName = 'dbo.Product';
+INSERT INTO etl.LoadLog VALUES ('Extract incremental', 'stg.ProductDelta', @n, @t0, SYSDATETIME());
+SELECT @wm AS OldWatermark, (SELECT LastModified FROM etl.Watermark WHERE TableName = 'dbo.Product') AS NewWatermark,
+       @n AS RowsExtracted;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 22 changed three products in the source and extracted them into stg.ProductDelta, but then ran the incremental extract a second time to show that it finds nothing new. That second run dropped and recreated stg.ProductDelta, empty, and moved nothing anywhere. The three changes were never loaded. This is a real and common failure: a delta table is a hand-over, and it must be loaded before the next extract replaces it. The fix is the watermark itself: set it back to its value before the changes (exactly 2026-10-16 17:51:46.010; a first attempt with 17:51:46 also picked up two products modified 10 milliseconds later) and run the same extract again. It finds the same 3 rows and moves the watermark forward to 13 November 09:00 again.</p><p class="pin"><span aria-hidden="true">📍</span> A watermark can be moved back to extract again; a delta table must be loaded before the next run replaces it.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Apply the changes to staging with MERGE</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+SET IDENTITY_INSERT stg.Product ON;    -- SELECT INTO copied the IDENTITY property from the source
+MERGE stg.Product AS t
+USING stg.ProductDelta AS s ON t.ProductID = s.ProductID
+WHEN MATCHED THEN
+  UPDATE SET Name = s.Name, ProductNumber = s.ProductNumber, Color = s.Color, StandardCost = s.StandardCost,
+             ListPrice = s.ListPrice, ProductSubcategoryID = s.ProductSubcategoryID,
+             ModifiedDate = s.ModifiedDate, ExtractedAt = s.ExtractedAt
+WHEN NOT MATCHED BY TARGET THEN
+  INSERT (ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID, ModifiedDate, ExtractedAt)
+  VALUES (s.ProductID, s.Name, s.ProductNumber, s.Color, s.StandardCost, s.ListPrice, s.ProductSubcategoryID,
+          s.ModifiedDate, s.ExtractedAt)
+OUTPUT $action AS Action, inserted.ProductID, inserted.Name, deleted.ListPrice AS OldPrice, inserted.ListPrice AS NewPrice;
+SET @n = @@ROWCOUNT;
+SET IDENTITY_INSERT stg.Product OFF;
+INSERT INTO etl.LoadLog VALUES ('Merge delta', 'stg.Product', @n, @t0, SYSDATETIME());</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>MERGE applies the delta to stg.Product so that staging, and the etl.vProduct view built on it, show the source as it is now. The OUTPUT clause sends one row per action straight to the results: deleted.ListPrice is the value before and inserted.ListPrice the value after, so an INSERT has no old price. Product 680 goes from 1,431.50 to 1,499.00, Product 1001 from 5.99 to 6.49, and Practice Light (1005) is new at 17.99. SET IDENTITY_INSERT is needed because SELECT INTO on Day 22 copied the IDENTITY property of dbo.Product's ProductID into staging. A staging table should simply hold the source's numbers, so either a staging table should be created without IDENTITY, or, as here, IDENTITY_INSERT is switched on for the load.</p><p class="pin"><span aria-hidden="true">📍</span> OUTPUT shows what MERGE did to each row: deleted.* is the row before, inserted.* the row after.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. The Type 2 load: close the old version, add the new one</h3></div>
+        <pre><code class="language-sql">SET XACT_ABORT ON;    -- any error rolls back the whole transaction (Day 20)
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @closed INT, @added INT;
+BEGIN TRANSACTION;
+-- a) Close the current version of every product whose price has changed
+UPDATE d SET ValidTo = s.ModifiedDate, IsCurrent = 0
+FROM dw.DimProduct d
+JOIN etl.vProduct s ON s.ProductID = d.ProductID
+WHERE d.IsCurrent = 1 AND d.ListPrice &lt;&gt; s.ListPrice;
+SET @closed = @@ROWCOUNT;
+-- b) Add a current version for every product that now has none: changed products and new products
+INSERT INTO dw.DimProduct (ProductID, ProductNumber, ProductName, Colour, Subcategory, Category,
+                           ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent)
+SELECT s.ProductID, s.ProductNumber, s.ProductName, s.Colour, s.Subcategory, s.Category,
+       s.ListPrice, s.PriceBand, s.ModifiedDate, '9999-12-31', 1
+FROM etl.vProduct s
+WHERE NOT EXISTS (SELECT 1 FROM dw.DimProduct d WHERE d.ProductID = s.ProductID AND d.IsCurrent = 1);
+SET @added = @@ROWCOUNT;
+COMMIT;
+INSERT INTO etl.LoadLog VALUES ('Load Type 2 close', 'dw.DimProduct', @closed, @t0, SYSDATETIME()),
+                               ('Load Type 2 add',   'dw.DimProduct', @added,  @t0, SYSDATETIME());
+SELECT @closed AS VersionsClosed, @added AS VersionsAdded, (SELECT COUNT(*) FROM dw.DimProduct) AS RowsInDimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The Type 2 load in two statements. The UPDATE finds every current version whose ListPrice differs from the transformed source, and closes it: ValidTo becomes the moment of the change in the source (ModifiedDate) and IsCurrent becomes 0. The INSERT then adds a current version for every product that now has no current version, which catches both the products just closed and brand-new products in one rule. Result: 2 versions closed (680 and 1001) and 3 added (680, 1001 and 1005), 512 rows in total. Both statements run inside one transaction with SET XACT_ABORT ON. Without that setting, most errors stop only the failing statement and COMMIT still saves the UPDATE (the trap found on Day 20). With it, any error rolls back the whole transaction, so no product can be left without a current version. Only ListPrice is tracked here: a change to a name or colour would not create a version. Which columns are Type 2 is a business decision, and it belongs in the design document (Day 27).</p><p class="pin"><span aria-hidden="true">📍</span> Two statements in one transaction: either both happen or neither, so a product is never left with no current version.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. One product, two versions</h3></div>
+        <pre><code class="language-sql">SELECT ProductKey, ProductID, ProductName, ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent
+FROM dw.DimProduct WHERE ProductID IN (680, 1001, 1005) ORDER BY ProductID, ValidFrom;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Product 680 now has two rows. Key 210 is valid from 1900 until 13 November 2026 09:00 at 1,431.50; key 509 is valid from that moment, at 1,499.00, and is current. Product 1001 has the same pattern, and Practice Light has a single version starting on 13 November. Notice that ValidTo of the old row equals ValidFrom of the new one: the versions touch without gaps or overlaps, so any date matches exactly one version. 680's price band did not change, because 1,499.00 is still under 1,500, but the price did, and that is what is tracked.</p><p class="pin"><span aria-hidden="true">📍</span> The old version is closed, not deleted: sales made before 13 November keep the old price band.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">5 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. Run the Type 2 load again: nothing changes</h3></div>
+        <pre><code class="language-sql">SET XACT_ABORT ON;    -- any error rolls back the whole transaction (Day 20)
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @closed INT, @added INT;
+BEGIN TRANSACTION;
+-- a) Close the current version of every product whose price has changed
+UPDATE d SET ValidTo = s.ModifiedDate, IsCurrent = 0
+FROM dw.DimProduct d
+JOIN etl.vProduct s ON s.ProductID = d.ProductID
+WHERE d.IsCurrent = 1 AND d.ListPrice &lt;&gt; s.ListPrice;
+SET @closed = @@ROWCOUNT;
+-- b) Add a current version for every product that now has none: changed products and new products
+INSERT INTO dw.DimProduct (ProductID, ProductNumber, ProductName, Colour, Subcategory, Category,
+                           ListPrice, PriceBand, ValidFrom, ValidTo, IsCurrent)
+SELECT s.ProductID, s.ProductNumber, s.ProductName, s.Colour, s.Subcategory, s.Category,
+       s.ListPrice, s.PriceBand, s.ModifiedDate, '9999-12-31', 1
+FROM etl.vProduct s
+WHERE NOT EXISTS (SELECT 1 FROM dw.DimProduct d WHERE d.ProductID = s.ProductID AND d.IsCurrent = 1);
+SET @added = @@ROWCOUNT;
+COMMIT;
+INSERT INTO etl.LoadLog VALUES ('Load Type 2 close', 'dw.DimProduct', @closed, @t0, SYSDATETIME()),
+                               ('Load Type 2 add',   'dw.DimProduct', @added,  @t0, SYSDATETIME());
+SELECT @closed AS VersionsClosed, @added AS VersionsAdded, (SELECT COUNT(*) FROM dw.DimProduct) AS RowsInDimension;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same Type 2 script again: nothing is closed and nothing is added, and the dimension stays at 512 rows. The UPDATE finds no current version whose price differs from the source, and the INSERT finds no product without a current version. A Type 2 load that is not re-runnable is especially dangerous, because a second run would keep adding versions of products that did not change, and the history would fill with false changes.</p><p class="pin"><span aria-hidden="true">📍</span> Re-runnable again: no price differs from the current version, so nothing is closed or added.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="the-fact-table-surrogate-key-lookups"><h2>The fact table: surrogate key lookups</h2>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. The fact table: keys to the dimensions, then the numbers</h3></div>
+        <pre><code class="language-sql">CREATE TABLE dw.FactSales (
+    SalesOrderID       INT           NOT NULL,     -- degenerate dimension: the order number, no table of its own
+    SalesOrderDetailID INT           NOT NULL,
+    OrderDateKey       INT           NOT NULL REFERENCES dw.DimDate (DateKey),
+    CustomerKey        INT           NOT NULL REFERENCES dw.DimCustomer (CustomerKey),
+    ProductKey         INT           NOT NULL REFERENCES dw.DimProduct (ProductKey),
+    SalesChannel       VARCHAR(8)    NOT NULL,
+    Quantity           SMALLINT      NOT NULL,
+    UnitPrice          MONEY         NOT NULL,
+    SalesAmount        DECIMAL(19,4) NOT NULL,
+    LoadedAt           DATETIME2(0)  NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT PK_FactSales PRIMARY KEY (SalesOrderID, SalesOrderDetailID));
+SELECT c.name AS ColumnName, TYPE_NAME(c.user_type_id) AS DataType,
+       OBJECT_NAME(fkc.referenced_object_id) AS PointsTo
+FROM sys.columns c
+LEFT JOIN sys.foreign_key_columns fkc ON fkc.parent_object_id = c.object_id AND fkc.parent_column_id = c.column_id
+WHERE c.object_id = OBJECT_ID('dw.FactSales') ORDER BY c.column_id;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The fact table stores what happened, at the lowest level the source has: one row per order line. This is the grain, and it is decided before anything else. Every column is one of three kinds. Keys to dimensions: OrderDateKey, CustomerKey and ProductKey, each with a foreign key, so the database itself refuses a key that does not exist. Numbers to add up: Quantity, UnitPrice and SalesAmount. And degenerate dimensions: SalesOrderID, SalesOrderDetailID and SalesChannel are descriptive but too small to need a table of their own, so they are kept in the fact. SalesOrderID and SalesOrderDetailID also form the primary key, which makes a duplicate load impossible. The query against sys.columns and sys.foreign_key_columns lists the columns and which dimension each key points to.</p><p class="pin"><span aria-hidden="true">📍</span> The grain is one row per order line; every column is either a key to a dimension or a number to add up.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. Load the fact: swap business keys for surrogate keys</h3></div>
+        <pre><code class="language-sql">DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+INSERT INTO dw.FactSales (SalesOrderID, SalesOrderDetailID, OrderDateKey, CustomerKey, ProductKey,
+                          SalesChannel, Quantity, UnitPrice, SalesAmount)
+SELECT s.SalesOrderID, s.SalesOrderDetailID, s.OrderDateKey,
+       ISNULL(c.CustomerKey, -1),                        -- not found: the Unknown member
+       ISNULL(p.ProductKey, -1),
+       s.SalesChannel, s.Quantity, s.UnitPrice, s.SalesAmount
+FROM etl.vSalesLine s
+JOIN dw.DimDate dd         ON dd.DateKey = s.OrderDateKey
+LEFT JOIN dw.DimCustomer c ON c.CustomerID = s.CustomerID
+LEFT JOIN dw.DimProduct p  ON p.ProductID = s.ProductID
+                          AND dd.FullDate &gt;= p.ValidFrom AND dd.FullDate &lt; p.ValidTo   -- version valid on the order date
+WHERE NOT EXISTS (SELECT 1 FROM dw.FactSales f
+                  WHERE f.SalesOrderID = s.SalesOrderID AND f.SalesOrderDetailID = s.SalesOrderDetailID);
+SET @n = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Load incremental', 'dw.FactSales', @n, @t0, SYSDATETIME());
+SELECT @n AS RowsLoaded, (SELECT COUNT(*) FROM dw.FactSales) AS RowsInFact;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The load's main job is the key lookup: the first sales line (order 43659) knows CustomerID 29825 and ProductID 776, and the fact needs CustomerKey 19527 and ProductKey 281. The customer lookup is a join on the business key. The product lookup must also choose the right version, so it joins on ProductID and on the order date falling between ValidFrom and ValidTo. That is why DimDate is joined first: it turns the integer OrderDateKey back into a date. LEFT JOINs and ISNULL(key, -1) send anything not found to the Unknown member. WHERE NOT EXISTS makes the load incremental and re-runnable: only lines not yet in the fact are inserted. 121,317 rows are loaded in one statement and logged.</p><p class="pin"><span aria-hidden="true">📍</span> The product lookup also matches the date: each sale gets the product version that was valid on the order date.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Did every line arrive, and did every key resolve?</h3></div>
+        <pre><code class="language-sql">SELECT COUNT(*) AS FactRows,
+       (SELECT COUNT(*) FROM etl.vSalesLine)        AS SourceLines,
+       SUM(SalesAmount)                             AS FactRevenue,
+       (SELECT SUM(SalesAmount) FROM etl.vSalesLine) AS SourceRevenue,
+       SUM(CASE WHEN CustomerKey = -1 THEN 1 ELSE 0 END) AS UnknownCustomer,
+       SUM(CASE WHEN ProductKey  = -1 THEN 1 ELSE 0 END) AS UnknownProduct
+FROM dw.FactSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same reconciliation as Day 22, now between the transform and the warehouse. 121,317 fact rows for 121,317 source lines, and 109,846,381.4250 in both, to the last decimal (this is the total after Day 23's rounding to 4 decimals, which was a documented decision). No sale went to an Unknown customer or an Unknown product, so every lookup succeeded. If any of these numbers differed, the load would be wrong even though it ran without an error, which is exactly what this check is for.</p><p class="pin"><span aria-hidden="true">📍</span> Reconcile the load like the extract: same rows, same money, and count the Unknowns.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row (the count)</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. A new order arrives before its customer does</h3></div>
+        <pre><code class="language-sql">-- Order 75124, 14 November 2026: customer 30119 is new and is not in the customer extract yet
+SET IDENTITY_INSERT stg.SalesOrderHeader ON;     -- staging keeps the source numbers
+INSERT INTO stg.SalesOrderHeader (SalesOrderID, OrderDate, DueDate, ShipDate, Status, OnlineOrderFlag, CustomerID,
+            SalesPersonID, TerritoryID, SubTotal, TaxAmt, Freight, TotalDue, ModifiedDate, ExtractedAt)
+VALUES (75124, '2026-11-14', '2026-11-21', NULL, 1, 1, 30119, NULL, 9, 1534.98, 122.80, 38.37, 1696.15,
+        '2026-11-14', SYSDATETIME());
+SET IDENTITY_INSERT stg.SalesOrderHeader OFF;
+SET IDENTITY_INSERT stg.SalesOrderDetail ON;
+INSERT INTO stg.SalesOrderDetail (SalesOrderID, SalesOrderDetailID, ProductID, OrderQty, UnitPrice,
+            UnitPriceDiscount, LineTotal, ModifiedDate, ExtractedAt)
+VALUES (75124, 121318, 680,  1, 1499.00, 0, 1499.00, '2026-11-14', SYSDATETIME()),
+       (75124, 121319, 1005, 2,   17.99, 0,   35.98, '2026-11-14', SYSDATETIME());
+SET IDENTITY_INSERT stg.SalesOrderDetail OFF;
+DECLARE @t0 DATETIME2(3) = SYSDATETIME(), @n INT;
+INSERT INTO dw.FactSales (SalesOrderID, SalesOrderDetailID, OrderDateKey, CustomerKey, ProductKey,
+                          SalesChannel, Quantity, UnitPrice, SalesAmount)
+SELECT s.SalesOrderID, s.SalesOrderDetailID, s.OrderDateKey,
+       ISNULL(c.CustomerKey, -1),                        -- not found: the Unknown member
+       ISNULL(p.ProductKey, -1),
+       s.SalesChannel, s.Quantity, s.UnitPrice, s.SalesAmount
+FROM etl.vSalesLine s
+JOIN dw.DimDate dd         ON dd.DateKey = s.OrderDateKey
+LEFT JOIN dw.DimCustomer c ON c.CustomerID = s.CustomerID
+LEFT JOIN dw.DimProduct p  ON p.ProductID = s.ProductID
+                          AND dd.FullDate &gt;= p.ValidFrom AND dd.FullDate &lt; p.ValidTo   -- version valid on the order date
+WHERE NOT EXISTS (SELECT 1 FROM dw.FactSales f
+                  WHERE f.SalesOrderID = s.SalesOrderID AND f.SalesOrderDetailID = s.SalesOrderDetailID);
+SET @n = @@ROWCOUNT;
+INSERT INTO etl.LoadLog VALUES ('Load incremental', 'dw.FactSales', @n, @t0, SYSDATETIME());
+SELECT @n AS RowsLoaded, (SELECT COUNT(*) FROM dw.FactSales) AS RowsInFact;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Real data does not arrive in a tidy order. Order 75124, placed on 14 November 2026 by a brand-new customer (30119), reaches staging before the customer extract has picked up that customer. It buys one 680 frame at the new price, 1,499.00, and two Practice Lights. IDENTITY_INSERT is switched on for each staging table in turn (only one table can have it on at a time). Then exactly the same fact load runs again: thanks to NOT EXISTS, only the 2 new lines are inserted, and the fact grows to 121,319 rows.</p><p class="pin"><span aria-hidden="true">📍</span> The same load, run again: only the two new lines are inserted.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q16">
+        <div class="q-head"><span class="num">#16</span><h3>16. Where did the new lines go?</h3></div>
+        <pre><code class="language-sql">SELECT f.SalesOrderDetailID, f.OrderDateKey, f.CustomerKey, c.CustomerName,
+       f.ProductKey, p.ProductName, p.ListPrice, p.IsCurrent, f.Quantity, f.SalesAmount
+FROM dw.FactSales f
+JOIN dw.DimCustomer c ON c.CustomerKey = f.CustomerKey
+JOIN dw.DimProduct p  ON p.ProductKey  = f.ProductKey
+WHERE f.SalesOrderID = 75124;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Both new lines were loaded, not lost. CustomerKey is -1, the Unknown customer, because 30119 is not in DimCustomer yet. The product lookup picked the version valid on 14 November: key 509 for the frame (1,499.00, the version created by step 9), not key 210, which every earlier sale of a 680 frame would use. Practice Light gets key 511, its only version. This is what Type 2 is for: an order before 13 November and an order after it point to different rows of the same product.</p><p class="pin"><span aria-hidden="true">📍</span> The sale is kept under the Unknown customer, and gets the new product version because it is dated after the change.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_16.png" aria-label="Enlarge screenshot of step 16"><img src="shots/q_16.png" loading="lazy" alt="SSMS screenshot: step 16 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q17">
+        <div class="q-head"><span class="num">#17</span><h3>17. Why LEFT JOIN: what an INNER JOIN would have lost</h3></div>
+        <pre><code class="language-sql">SELECT (SELECT COUNT(*) FROM etl.vSalesLine) AS LinesInSource,
+       (SELECT COUNT(*) FROM etl.vSalesLine s
+        JOIN dw.DimCustomer c ON c.CustomerID = s.CustomerID) AS LinesWithInnerJoin,
+       (SELECT SUM(s.SalesAmount) FROM etl.vSalesLine s
+        WHERE NOT EXISTS (SELECT 1 FROM dw.DimCustomer c WHERE c.CustomerID = s.CustomerID)) AS RevenueLost;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>This shows what would have happened with ordinary INNER JOINs. 121,319 lines exist in the source, but only 121,317 survive an inner join to the customer dimension: the two lines of order 75124 would have vanished without an error, and 1,534.98 of revenue with them. Nobody would know until a total failed to match. The Unknown member turns a silent loss into a visible, countable row with key -1, which a check (step 14, and Day 25) can report and a later load can repair.</p><p class="pin"><span aria-hidden="true">📍</span> An INNER JOIN drops facts silently; the Unknown member keeps the money in the totals.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_17.png" aria-label="Enlarge screenshot of step 17"><img src="shots/q_17.png" loading="lazy" alt="SSMS screenshot: step 17 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q18">
+        <div class="q-head"><span class="num">#18</span><h3>18. The customer arrives: load it and repair the fact</h3></div>
+        <pre><code class="language-sql">INSERT INTO stg.Customer (CustomerID, PersonID, StoreID, TerritoryID, FirstName, LastName, City,
+                          CountryRegionCode, ModifiedDate, ExtractedAt)
+VALUES (30119, 20778, NULL, 9, 'Sana', 'Iqbal', 'Sydney', 'AU', '2026-11-15', SYSDATETIME());
+DECLARE @t0 DATETIME2(3) = SYSDATETIME();
+DECLARE @a TABLE (act NVARCHAR(10));
+MERGE dw.DimCustomer AS t
+USING etl.vCustomer AS s ON t.CustomerID = s.CustomerID
+WHEN MATCHED AND (t.CustomerType &lt;&gt; s.CustomerType OR ISNULL(t.CustomerName, '') &lt;&gt; ISNULL(s.CustomerName, '')
+               OR t.StoreName &lt;&gt; s.StoreName OR t.City &lt;&gt; s.City OR t.Country &lt;&gt; s.Country)
+  THEN UPDATE SET CustomerType = s.CustomerType, CustomerName = s.CustomerName, StoreName = s.StoreName,
+                  City = s.City, Country = s.Country, UpdatedAt = SYSDATETIME()       -- Type 1: overwrite
+WHEN NOT MATCHED BY TARGET
+  THEN INSERT (CustomerID, CustomerType, CustomerName, StoreName, City, Country)
+       VALUES (s.CustomerID, s.CustomerType, s.CustomerName, s.StoreName, s.City, s.Country)
+OUTPUT $action INTO @a;
+INSERT INTO etl.LoadLog SELECT 'Load Type 1', 'dw.DimCustomer', COUNT(*), @t0, SYSDATETIME() FROM @a;
+UPDATE f SET CustomerKey = c.CustomerKey
+FROM dw.FactSales f
+JOIN stg.SalesOrderHeader h ON h.SalesOrderID = f.SalesOrderID
+JOIN dw.DimCustomer c       ON c.CustomerID   = h.CustomerID
+WHERE f.CustomerKey = -1;
+SELECT f.SalesOrderDetailID, f.CustomerKey, c.CustomerName, c.City, f.SalesAmount,
+       (SELECT COUNT(*) FROM @a WHERE act = 'INSERT') AS CustomersInserted
+FROM dw.FactSales f JOIN dw.DimCustomer c ON c.CustomerKey = f.CustomerKey
+WHERE f.SalesOrderID = 75124;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The customer arrives in the next extract: Sana Iqbal, Sydney. The Type 1 MERGE from step 3 runs unchanged and inserts her (CustomersInserted = 1; she gets CustomerKey 19821). Then an UPDATE repairs the fact: for every row still pointing to -1, it looks up the order's CustomerID in staging and replaces -1 with the real key. Both lines of order 75124 now belong to Sana Iqbal. In a scheduled load this repair runs every time, right after the dimension load, so the Unknown member is a waiting room, not a final destination.</p><p class="pin"><span aria-hidden="true">📍</span> Unknown is temporary: once the customer is loaded, the fact rows are pointed at the real key.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_18.png" aria-label="Enlarge screenshot of step 18"><img src="shots/q_18.png" loading="lazy" alt="SSMS screenshot: step 18 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q19">
+        <div class="q-head"><span class="num">#19</span><h3>19. The star answers its first question</h3></div>
+        <pre><code class="language-sql">SELECT d.[Year], p.Category, COUNT(*) AS Lines, SUM(f.SalesAmount) AS Revenue
+FROM dw.FactSales f
+JOIN dw.DimDate d    ON d.DateKey    = f.OrderDateKey
+JOIN dw.DimProduct p ON p.ProductKey = f.ProductKey
+GROUP BY d.[Year], p.Category
+ORDER BY d.[Year], Revenue DESC;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The finished star answers questions with joins on surrogate keys only, from the fact to DimDate for the year and to DimProduct for the category; staging is not touched. Bikes are by far the largest category every year (36.3 million in 2013). 2011 and 2014 are partial years (the data runs from 31 May 2011 to 30 June 2014), and 2026 holds the test order. One row there is a warning for Day 25: Practice Light sold 35.98 but its category is 'Not for sale', because it has no subcategory. The transform rule from Day 23 assumed that products without a subcategory are not sold. A rule like that needs a validation check to say when reality disagrees.</p><p class="pin"><span aria-hidden="true">📍</span> Reports join the fact to the dimensions on surrogate keys only; the staging tables are no longer needed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_19.png" aria-label="Enlarge screenshot of step 19"><img src="shots/q_19.png" loading="lazy" alt="SSMS screenshot: step 19 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">18 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q20">
+        <div class="q-head"><span class="num">#20</span><h3>20. What the load did today</h3></div>
+        <pre><code class="language-sql">SELECT LogID, Step, TableName, RowsAffected FROM etl.LoadLog WHERE LogID &gt; 9 ORDER BY LogID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every load step wrote one row to etl.LoadLog. Rows 10 to 23 are today's: the date dimension (5,844), the customer loads (19,820, then 0, then 1 for the move, and later 1 for Sana Iqbal), the product dimension (508), the re-extracted delta (3) and its merge into staging (3), the Type 2 load (2 closed, 3 added) and its repeat (0 and 0), and the fact loads (121,317, then 2). Read top to bottom, the log is the story of the day, and when a number is not what was expected, it shows which step to look at. On Day 26 these steps become one procedure that writes this log by itself.</p><p class="pin"><span aria-hidden="true">📍</span> Every load wrote a row to the log: Day 26 turns these steps into one procedure.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_20.png" aria-label="Enlarge screenshot of step 20"><img src="shots/q_20.png" loading="lazy" alt="SSMS screenshot: step 20 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">14 rows</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>Type 1 or Type 2?</h2><div class="tablewrap"><table class="map prose"><thead><tr><th></th><th>Type 1 (DimCustomer)</th><th>Type 2 (DimProduct)</th></tr></thead><tbody><tr><td>When a value changes</td><td>The row is updated</td><td>The current row is closed and a new row is added</td></tr><tr><td>Rows per business key</td><td>One</td><td>One per version</td></tr><tr><td>Business key unique?</td><td>Yes (UNIQUE constraint)</td><td>No; unique only among current rows (filtered index)</td></tr><tr><td>Old sales are reported with</td><td>Today's value (Jon Yang's old sales show Brisbane)</td><td>The value at the time of the sale</td></tr><tr><td>Extra columns</td><td>UpdatedAt</td><td>ValidFrom, ValidTo, IsCurrent</td></tr><tr><td>Fact lookup</td><td>Business key only</td><td>Business key and order date between ValidFrom and ValidTo</td></tr><tr><td>Use it for</td><td>Corrections, details nobody reports on over time</td><td>Anything a report must show "as it was" (price, region, segment)</td></tr></tbody></table></div><h2>Self-test: answers</h2><div class="tip"><strong>Why a surrogate key and not the source's ID?</strong> A Type 2 dimension needs several rows for one business key, so the business key cannot be the primary key. Surrogate keys also protect the warehouse from source systems that reuse or change their numbers, and let several sources be combined without clashes.<br><br><strong>Why must every load be re-runnable?</strong> Loads fail halfway and get restarted, or are run twice by mistake. MERGE with a change test, NOT EXISTS for facts, and a primary key on the fact's natural key mean a second run adds nothing (steps 4, 11 and 15).<br><br><strong>Why does the product lookup need the order date?</strong> Because Product 680 has two rows. Without the date range the join would match both versions and count each sale twice; with it, an order before 13 November gets key 210 and an order after gets key 509.<br><br><strong>What is the Unknown member for?</strong> A fact whose dimension row has not arrived yet (order 75124 before its customer) goes to key -1 instead of disappearing in an INNER JOIN. It is counted, reported, and repaired by the next load (step 18).<br><br><strong>What went wrong with the Day 22 delta?</strong> The second incremental extract replaced stg.ProductDelta before it was loaded, so the three changes never reached the warehouse. Moving the watermark back to its exact earlier value and extracting again recovered them. A delta must be loaded before the next extract runs; Day 26 puts both in one procedure so that cannot happen.</div>
+  <nav class="pager"><a href="../day23/">← Day 23: Transform: cleaning and standardising</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>

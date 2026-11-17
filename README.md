@@ -51,6 +51,8 @@ An ELT pipeline built in SQL: raw copies in the `stg` schema, a load log and wat
 | Day | Topic | What it covers | Queries |
 |---|---|---|---|
 | [22](day22/) | ETL vs ELT, staging, full and incremental extract | Staging and bookkeeping schemas, a load log, full extracts of orders, order lines, customers and products, reconciling counts and totals against the source, a ModifiedDate watermark, an incremental extract that is safe to re-run, profiling the staged data | 17 |
+| [23](day23/) | Transform: cleaning and standardising | Transform rules as views (customer type, name and city with no NULLs, product categories and price bands, sales lines with a date key), FORMAT vs arithmetic, then a messy CSV of web sign-ups: TRY_CONVERT for four date formats, names, emails, phone numbers, a city mapping table, amounts, a reject table with reasons, de-duplication with ROW_NUMBER, and accounting for every raw row | 19 |
+| [24](day24/) | Load: dimensions, history and the fact table | The `dw` star: a generated date dimension, a Type 1 customer dimension loaded with MERGE and OUTPUT $action, a Type 2 product dimension (close the old version, add the new one, in one transaction), surrogate keys and Unknown members, a fact load that looks up the product version valid on the order date, re-runnable loads, a late-arriving customer repaired after the fact, and reconciliation against the source | 20 |
 
 The SQL for each day is in [etl/sql/](etl/sql/), with a reset script that puts AWPractice back so the day can be run again from the start.
 
@@ -82,6 +84,12 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **Joining a Type 2 dimension on its natural key multiplies the facts:** 867 lines and three times the revenue for product FR-M94B-38 instead of 289 (Day 20).
 - **The 1,336 customers with no home city are exactly the store customers.** A store's address is recorded against the store, not its contact person, while every individual customer has a home city. They placed 3,806 orders, exactly the orders not placed online (Day 22).
 - **A NULL SalesPersonID is not missing data:** all 27,659 orders without a salesperson are online orders (Day 22).
+- **Store contacts can take their store's city.** Using the store's main-office address fills all 1,336 missing customer cities with real values instead of "Unknown" (Day 23).
+- **Casting LineTotal to 4 decimals moves total revenue by 2.5 cents.** LineTotal has 6 decimals; 121,317 roundings add 0.0251 to 109,846,381.40 (Day 23).
+- **TRY_CONVERT's style numbers are hints, not strict patterns:** "3 Nov 2026" converts under styles 23, 103, 105 and 106 alike (Day 23).
+- **A delta table is lost if it is not loaded before the next extract.** Day 22's second incremental run replaced the three changed products with an empty table; moving the watermark back to its exact value (17:51:46.010, not 17:51:46, which also picked up two rows modified 10 ms later) recovered them (Day 24).
+- **`SELECT ... INTO` copies the IDENTITY property,** so staging tables made from `dbo.Product`, `SalesOrderHeader` and `SalesOrderDetail` refuse the source's own IDs until `IDENTITY_INSERT` is switched on (Day 24).
+- **An INNER JOIN to a dimension drops facts silently.** A new order whose customer had not arrived yet would have lost 1,534.98; the Unknown member (key -1) kept it until the customer was loaded (Day 24).
 
 ## Structure
 
