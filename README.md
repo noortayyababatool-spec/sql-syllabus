@@ -53,8 +53,13 @@ An ELT pipeline built in SQL: raw copies in the `stg` schema, a load log and wat
 | [22](day22/) | ETL vs ELT, staging, full and incremental extract | Staging and bookkeeping schemas, a load log, full extracts of orders, order lines, customers and products, reconciling counts and totals against the source, a ModifiedDate watermark, an incremental extract that is safe to re-run, profiling the staged data | 17 |
 | [23](day23/) | Transform: cleaning and standardising | Transform rules as views (customer type, name and city with no NULLs, product categories and price bands, sales lines with a date key), FORMAT vs arithmetic, then a messy CSV of web sign-ups: TRY_CONVERT for four date formats, names, emails, phone numbers, a city mapping table, amounts, a reject table with reasons, de-duplication with ROW_NUMBER, and accounting for every raw row | 19 |
 | [24](day24/) | Load: dimensions, history and the fact table | The `dw` star: a generated date dimension, a Type 1 customer dimension loaded with MERGE and OUTPUT $action, a Type 2 product dimension (close the old version, add the new one, in one transaction), surrogate keys and Unknown members, a fact load that looks up the product version valid on the order date, re-runnable loads, a late-arriving customer repaired after the fact, and reconciliation against the source | 20 |
+| [25](day25/) | Data validation: checks, severities and a gate | A run table and a results table with a computed status, ten recorded checks (rows and revenue staging vs fact, a full EXCEPT compare of source and staging, unique keys and one current version, amounts recomputed, possible dates, Type 2 gaps and overlaps with LEAD, Unknown members, a business rule, a plausibility check), tracing a warning back to the source, planting an error to test the checks, and a gate that THROWs on errors | 15 |
 
 The SQL for each day is in [etl/sql/](etl/sql/), with a reset script that puts AWPractice back so the day can be run again from the start.
+
+## Mini project: AWSupplyDW
+
+A complete supply-chain data warehouse built from the purchasing and manufacturing side of AdventureWorks2022, which the weekly drills never touched: four fact tables (purchase lines, work orders, work-order operations, an inventory snapshot) sharing a conformed date and a Type 2 product dimension built from the source's own price history, a Type 2 vendor dimension, a one-call re-runnable load with a step log, 15 data quality checks with a publishing gate, summary tables and views, ten analytical queries and tests. Design document and results: [project/README.md](project/README.md); SQL: [project/sql/](project/sql/).
 
 ## The chain: SQL Server → SSIS → Power BI
 
@@ -90,6 +95,8 @@ The SSIS package [LoadSalesSummary.dtsx](ssis/AWReporting/LoadSalesSummary.dtsx)
 - **A delta table is lost if it is not loaded before the next extract.** Day 22's second incremental run replaced the three changed products with an empty table; moving the watermark back to its exact value (17:51:46.010, not 17:51:46, which also picked up two rows modified 10 ms later) recovered them (Day 24).
 - **`SELECT ... INTO` copies the IDENTITY property,** so staging tables made from `dbo.Product`, `SalesOrderHeader` and `SalesOrderDetail` refuse the source's own IDs until `IDENTITY_INSERT` is switched on (Day 24).
 - **An INNER JOIN to a dimension drops facts silently.** A new order whose customer had not arrived yet would have lost 1,534.98; the Unknown member (key -1) kept it until the customer was loaded (Day 24).
+- **A first Type 2 version "valid since 1900" can put today's price on old sales.** Product 776 sold 45 lines at 3,374.99 in 2011–2012 (its list price then, per `ProductListPriceHistory`), but the warehouse's only version says 2,500.00, a price set in October 2026 (Day 25).
+- **114 products in AWPractice were repriced without updating `ModifiedDate`,** so a watermark on that column would never see the change; a full `EXCEPT` compare does (Day 25).
 
 ## Structure
 
@@ -104,5 +111,6 @@ dw/sql/           dayNN.sql: every query of Days 15 to 21
 dw/dimdate.sql    reusable date dimension build script
 dw/images/        SSMS star and snowflake diagrams
 etl/sql/          dayNN.sql: every query of Week 4, plus reset scripts
+project/          mini project: design document (README.md) and sql/01 to 09
 assets/           stylesheet and script
 ```

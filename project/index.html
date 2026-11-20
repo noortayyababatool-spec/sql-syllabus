@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini Project: AWSupplyDW</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.md table{border-collapse:collapse;width:100%;font-size:.9rem;margin:12px 0;background:var(--surface)}
+.md th,.md td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.md th{background:var(--accent-soft)}
+.md .tw{overflow-x:auto}
+.md pre code{white-space:pre}
+.md .mermaid{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0;overflow-x:auto;text-align:center}
+.md h2{padding-bottom:.3em;border-bottom:2px solid var(--line)}
+</style>
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/">Day 21</a><a href="../day22/">Day 22</a><a href="../day23/">Day 23</a><a href="../day24/">Day 24</a><a href="../day25/">Day 25</a><a href="./" aria-current="page">Project</a></nav></div></header>
+<main class="wrap">
+<p class="crumb"><a href="../index.html">SQL Syllabus</a> / Mini project</p>
+<article class="md" id="doc"><p>Loading the project document…</p></article>
+<noscript><p>This page needs JavaScript. The document is also available as <a href="README.md">README.md</a>.</p></noscript>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · Mini project: AWSupplyDW</p></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script>
+fetch('README.md').then(r => r.text()).then(md => {
+  const doc = document.getElementById('doc');
+  doc.innerHTML = marked.parse(md);
+  doc.querySelectorAll('table').forEach(t => { const w = document.createElement('div'); w.className = 'tw'; t.replaceWith(w); w.appendChild(t); });
+  doc.querySelectorAll('h1,h2,h3').forEach(h => { if (!h.id) h.id = h.textContent.trim().toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'); });
+  doc.querySelectorAll('pre code.language-mermaid').forEach(c => { const d = document.createElement('div'); d.className = 'mermaid'; d.textContent = c.textContent; c.parentElement.replaceWith(d); });
+  if (window.hljs) doc.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  mermaid.initialize({ startOnLoad: false, theme: 'default' });
+  mermaid.run({ querySelector: '.mermaid' });
+  if (location.hash) { const t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+}).catch(() => { document.getElementById('doc').innerHTML = '<p>Could not load the document. Open <a href="README.md">README.md</a>.</p>'; });
+</script>
+</body>
+</html>

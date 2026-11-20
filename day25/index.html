@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day 25: Data validation: checks, severities and a gate · SQL Syllabus</title>
+<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+</head>
+<body><header class="topbar"><div class="wrap"><a class="brand" href="../index.html">SQL Syllabus</a><nav><a href="../day1/">Day 1</a><a href="../day2/">Day 2</a><a href="../day3/">Day 3</a><a href="../day4/">Day 4</a><a href="../day5/">Day 5</a><a href="../day6/">Day 6</a><a href="../day7/">Day 7</a><a href="../day8/">Day 8</a><a href="../day9/">Day 9</a><a href="../day10/">Day 10</a><a href="../day11/">Day 11</a><a href="../day12/">Day 12</a><a href="../day13/">Day 13</a><a href="../day14/">Day 14</a><a href="../day15/">Day 15</a><a href="../day16/">Day 16</a><a href="../day17/">Day 17</a><a href="../day18/">Day 18</a><a href="../day19/">Day 19</a><a href="../day20/">Day 20</a><a href="../day21/">Day 21</a><a href="../day22/">Day 22</a><a href="../day23/">Day 23</a><a href="../day24/">Day 24</a><a href="../day25/" aria-current="page">Day 25</a></nav></div></header>
+<main class="wrap">
+  <p class="crumb"><a href="../index.html">Week 4 · ETL and Data Quality</a> / Day 25</p>
+  <h1>Day 25: Data validation: checks, severities and a gate</h1>
+  <p class="meta">Wed 18 November 2026 · 15 queries · run on AWPractice</p>
+  <div class="brief">
+    <p><strong>Goal:</strong> test the loaded warehouse with recorded checks for completeness, uniqueness, validity, consistency and business rules, and decide automatically whether the load may be published.</p>
+    <p><strong>Read:</strong> Microsoft Learn &quot;EXCEPT and INTERSECT&quot;, &quot;LEAD&quot;, &quot;THROW&quot;; Kimball Group &quot;The 34 subsystems of ETL&quot; (subsystem 4, data cleansing system, and the data quality screens).</p>
+  </div>
+  <div class="tip"><strong>Trust, but check:</strong> Day 24's load ran without an error, but "no error" only means SQL Server accepted the statements. It does not mean the numbers are right. Today ten checks test the warehouse the way an auditor would. Each check counts the rows that break one rule and writes the count to a results table. Checks have a <strong>severity</strong>: an <strong>Error</strong> stops the load from being published; a <strong>Warning</strong> lets it through and goes to a person. The checks found two real problems, and one of them leads back to a wrong assumption in Day 24.</div><div class="tablewrap"><table class="map prose"><thead><tr><th>Category</th><th>Question it answers</th><th>Today's checks</th></tr></thead><tbody><tr><td>Completeness</td><td>Did everything arrive, once?</td><td>Rows and revenue, staging vs fact; source vs staging, every column</td></tr><tr><td>Uniqueness</td><td>Is each thing there exactly once?</td><td>Business keys, current versions, fact lines</td></tr><tr><td>Validity</td><td>Is each value possible?</td><td>Amount = quantity x price x (1 - discount); dates in order</td></tr><tr><td>Consistency</td><td>Do the tables agree with each other?</td><td>Type 2 versions without gaps; facts on Unknown members</td></tr><tr><td>Business rule</td><td>Do the rules' assumptions still hold?</td><td>Products sold that are labelled "Not for sale"</td></tr><tr><td>Plausibility</td><td>Does anything look suspicious?</td><td>Sold above list price</td></tr></tbody></table></div>
+  <div class="toc"><h2>On this page</h2><ol><li><a href="#somewhere-to-record-the-results">Somewhere to record the results</a> <span>1</span></li><li><a href="#completeness-and-uniqueness">Completeness and uniqueness</a> <span>4</span></li><li><a href="#validity-and-consistency">Validity and consistency</a> <span>4</span></li><li><a href="#business-rules-and-plausibility">Business rules and plausibility</a> <span>3</span></li><li><a href="#using-the-results">Using the results</a> <span>3</span></li></ol></div>
+  <section class="part" id="somewhere-to-record-the-results"><h2>Somewhere to record the results</h2>
+      <article class="q" id="q1">
+        <div class="q-head"><span class="num">#1</span><h3>1. A run table and a results table</h3></div>
+        <pre><code class="language-sql">USE AWPractice;
+DROP TABLE IF EXISTS etl.DQResult, etl.DQRun;
+CREATE TABLE etl.DQRun (
+    RunID     INT IDENTITY(1, 1) PRIMARY KEY,
+    StartedAt DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    EndedAt   DATETIME2(0) NULL,
+    Errors    INT NULL,
+    Warnings  INT NULL);
+CREATE TABLE etl.DQResult (
+    ResultID   INT IDENTITY(1, 1) PRIMARY KEY,
+    RunID      INT         NOT NULL REFERENCES etl.DQRun (RunID),
+    CheckName  VARCHAR(60) NOT NULL,
+    Category   VARCHAR(20) NOT NULL,
+    Severity   VARCHAR(7)  NOT NULL CHECK (Severity IN ('Error', 'Warning')),
+    FailedRows INT         NOT NULL,
+    Status AS (CASE WHEN FailedRows = 0 THEN 'Pass' WHEN Severity = 'Error' THEN 'Fail' ELSE 'Warning' END),
+    CheckedAt  DATETIME2(0) NOT NULL DEFAULT SYSDATETIME());
+INSERT INTO etl.DQRun DEFAULT VALUES;     -- start run 1
+SELECT RunID, StartedAt, EndedAt, Errors, Warnings FROM etl.DQRun;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Two tables in the etl schema turn checks into data. etl.DQRun has one row per run of the checks, with the start and end times and the number of errors and warnings. etl.DQResult has one row per check per run: its name, its category, its severity and how many rows failed it. Status is a computed column: it is worked out from FailedRows and Severity every time it is read, so it can never disagree with them. A failed check with severity Error is 'Fail', one with severity Warning is 'Warning', and any check with no failed rows is 'Pass'. The CHECK constraint allows only the two severities. INSERT ... DEFAULT VALUES starts run 1, using the defaults for every column. Every check in this lesson has the same three parts: count the failing rows into @n, write one row to etl.DQResult, and show the evidence.</p><p class="pin"><span aria-hidden="true">📍</span> A check that only prints a number is forgotten; a check that writes a row can be counted, compared and acted on.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_1.png" aria-label="Enlarge screenshot of step 1"><img src="shots/q_1.png" loading="lazy" alt="SSMS screenshot: step 1 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="completeness-and-uniqueness"><h2>Completeness and uniqueness</h2>
+      <article class="q" id="q2">
+        <div class="q-head"><span class="num">#2</span><h3>2. Every order line reached the fact</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+DECLARE @stg INT = (SELECT COUNT(*) FROM stg.SalesOrderDetail), @fact INT = (SELECT COUNT(*) FROM dw.FactSales);
+SET @n = ABS(@stg - @fact);
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Order lines: staging = fact', 'Completeness', 'Error', @n);
+SELECT @stg AS StagingLines, @fact AS FactLines, @n AS Difference;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The first and simplest check: the number of order lines in staging must equal the number in the fact table. Both are 121,319: the 121,317 AdventureWorks lines plus the two lines of Day 24's test order. Difference 0, so the check is recorded as passed. This is an Error-level check, because a missing or doubled row makes every total wrong. Notice that the check compares the warehouse with staging, not with AdventureWorks2022: staging holds the test order that the original source does not, and each check should compare two neighbouring steps of the pipeline, so a failure points at the step between them.</p><p class="pin"><span aria-hidden="true">📍</span> Completeness: nothing was lost or doubled between staging and the warehouse.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_2.png" aria-label="Enlarge screenshot of step 2"><img src="shots/q_2.png" loading="lazy" alt="SSMS screenshot: step 2 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q3">
+        <div class="q-head"><span class="num">#3</span><h3>3. Every cent reached the fact</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+DECLARE @stg DECIMAL(19, 4) = (SELECT SUM(CAST(LineTotal AS DECIMAL(19, 4))) FROM stg.SalesOrderDetail),
+        @fact DECIMAL(19, 4) = (SELECT SUM(SalesAmount) FROM dw.FactSales);
+SET @n = CASE WHEN @stg = @fact THEN 0 ELSE 1 END;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Revenue: staging = fact', 'Completeness', 'Error', @n);
+SELECT @stg AS StagingRevenue, @fact AS FactRevenue, @fact - @stg AS Difference;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The same comparison for money. Staging's LineTotal, rounded to 4 decimals with the same rule as the transform (Day 23), adds up to 109,847,916.4050, and so does the fact. Day 24's figure was 109,846,381.4250; the difference is the 1,534.98 test order. Comparing the rounded staging value is deliberate: comparing raw LineTotal would show the known 2.5-cent rounding difference every day, and a check that always fails is soon ignored. The accepted difference is built into the rule instead. FailedRows is 1 or 0 here, because a total is a single value that either matches or does not.</p><p class="pin"><span aria-hidden="true">📍</span> Counting rows is not enough: a load can have every row and still the wrong amounts.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_3.png" aria-label="Enlarge screenshot of step 3"><img src="shots/q_3.png" loading="lazy" alt="SSMS screenshot: step 3 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q4">
+        <div class="q-head"><span class="num">#4</span><h3>4. Staging still matches the source, column by column</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+DECLARE @a INT = (SELECT COUNT(*) FROM (SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID FROM dbo.Product
+                                       EXCEPT
+                                       SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID FROM stg.Product) x),
+        @b INT = (SELECT COUNT(*) FROM (SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID FROM stg.Product
+                                       EXCEPT
+                                       SELECT ProductID, Name, ProductNumber, Color, StandardCost, ListPrice, ProductSubcategoryID FROM dbo.Product) x);
+SET @n = @a + @b;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Products: source = staging', 'Completeness', 'Error', @n);
+SELECT (SELECT COUNT(*) FROM dbo.Product) AS SourceProducts, (SELECT COUNT(*) FROM stg.Product) AS StagingProducts,
+       @a AS DifferentInSource, @b AS DifferentInStaging;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>EXCEPT returns the rows of the first query that are not in the second, comparing every listed column. Run in both directions, it finds products that differ in any column, exist only in the source or exist only in staging. Both counts are 0: the 509 products in staging (508 from Day 22 plus Practice Light) are exactly the 509 in dbo.Product. This check matters because of what a watermark cannot see. While preparing this lesson, a comparison of dbo.Product with the original AdventureWorks2022 found 116 products with different prices. 114 of them had been changed by earlier practice lessons (raised by 2, 5, 7 or 10 per cent) with an UPDATE that did not touch ModifiedDate, which still says 2014. An incremental extract based on ModifiedDate would never pick up such a change; a full compare does. Here they were already in the Day 22 full extract, so staging is correct.</p><p class="pin"><span aria-hidden="true">📍</span> EXCEPT compares every column: it catches changes a ModifiedDate watermark cannot see.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_4.png" aria-label="Enlarge screenshot of step 4"><img src="shots/q_4.png" loading="lazy" alt="SSMS screenshot: step 4 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q5">
+        <div class="q-head"><span class="num">#5</span><h3>5. Keys are unique, and every product has exactly one current version</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+DECLARE @dupCust INT = (SELECT COUNT(*) FROM (SELECT CustomerID FROM dw.DimCustomer
+                                              GROUP BY CustomerID HAVING COUNT(*) &gt; 1) d),
+        @badCurrent INT = (SELECT COUNT(*) FROM (SELECT ProductID FROM dw.DimProduct
+                                                 GROUP BY ProductID HAVING SUM(CAST(IsCurrent AS INT)) &lt;&gt; 1) d),
+        @dupFact INT = (SELECT COUNT(*) FROM (SELECT SalesOrderID, SalesOrderDetailID FROM dw.FactSales
+                                              GROUP BY SalesOrderID, SalesOrderDetailID HAVING COUNT(*) &gt; 1) d);
+SET @n = @dupCust + @badCurrent + @dupFact;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Keys unique; one current version', 'Uniqueness', 'Error', @n);
+SELECT @dupCust AS DuplicateCustomers, @badCurrent AS ProductsWithout1CurrentVersion, @dupFact AS DuplicateFactLines;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Three uniqueness rules in one check. No CustomerID appears twice in the Type 1 customer dimension. Every product has exactly one current version: not two, and not zero. No order line appears twice in the fact. All three are 0. The constraints from Day 24 already prevent two of these: the UNIQUE constraint on CustomerID and the fact's primary key. The filtered unique index on current products only prevents two current versions; it cannot prevent zero, which is what a failed Type 2 load without XACT_ABORT would leave behind. HAVING SUM(CAST(IsCurrent AS INT)) &lt;&gt; 1 catches both cases. A check costs almost nothing, so it is worth having even where a constraint exists: constraints get dropped to speed up a big load and are sometimes not put back.</p><p class="pin"><span aria-hidden="true">📍</span> Constraints prevent some of these; a check also covers what no constraint can, such as zero current versions.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_5.png" aria-label="Enlarge screenshot of step 5"><img src="shots/q_5.png" loading="lazy" alt="SSMS screenshot: step 5 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="validity-and-consistency"><h2>Validity and consistency</h2>
+      <article class="q" id="q6">
+        <div class="q-head"><span class="num">#6</span><h3>6. Amounts add up on every line</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+SET @n = (SELECT COUNT(*) FROM dw.FactSales f
+       JOIN stg.SalesOrderDetail d ON d.SalesOrderID = f.SalesOrderID AND d.SalesOrderDetailID = f.SalesOrderDetailID
+       WHERE f.Quantity &lt;= 0 OR f.UnitPrice &lt; 0
+          OR ABS(f.SalesAmount - f.Quantity * f.UnitPrice * (1 - d.UnitPriceDiscount)) &gt; 0.01);
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Amount = quantity x price x (1 - discount)', 'Validity', 'Error', @n);
+SELECT COUNT(*) AS LinesChecked, @n AS LinesFailed FROM dw.FactSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Every fact line's SalesAmount is recomputed from its parts: quantity times unit price times one minus the discount, compared with a tolerance of 0.01 because the stored amount has been rounded. Negative prices and zero or negative quantities fail too. All 121,319 lines pass. The join back to staging is needed because the discount is not stored in the fact. If a transform rule were wrong (a discount applied twice, say), this check would fail on every discounted line, while the revenue reconciliation in step 3 would still pass, because staging and fact would agree with each other.</p><p class="pin"><span aria-hidden="true">📍</span> Recompute a stored number from its parts: a wrong rule in the transform shows up here.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_6.png" aria-label="Enlarge screenshot of step 6"><img src="shots/q_6.png" loading="lazy" alt="SSMS screenshot: step 6 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q7">
+        <div class="q-head"><span class="num">#7</span><h3>7. Dates are in a possible order</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+SELECT @n = COUNT(*) FROM stg.SalesOrderHeader
+WHERE OrderDate &gt; SYSDATETIME() OR ShipDate &lt; OrderDate OR DueDate &lt; OrderDate;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Order dates possible', 'Validity', 'Error', @n);
+SELECT COUNT(*) AS Orders,
+       SUM(CASE WHEN OrderDate &gt; SYSDATETIME() THEN 1 ELSE 0 END) AS InTheFuture,
+       SUM(CASE WHEN ShipDate &lt; OrderDate THEN 1 ELSE 0 END)      AS ShippedBeforeOrdered,
+       SUM(CASE WHEN DueDate  &lt; OrderDate THEN 1 ELSE 0 END)      AS DueBeforeOrdered,
+       SUM(CASE WHEN ShipDate IS NULL THEN 1 ELSE 0 END)          AS NotShippedYet
+FROM stg.SalesOrderHeader;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Dates must be possible: no order in the future, no order shipped or due before it was placed. All 31,466 orders pass. The column NotShippedYet shows 1: Day 24's test order, which is still being processed (status 1) and has no ship date. That is not an error, and the check deliberately allows it: ShipDate &lt; OrderDate is unknown, not true, when ShipDate is NULL, so the row does not fail. Every validity rule has to decide which NULLs are allowed, and say so.</p><p class="pin"><span aria-hidden="true">📍</span> A NULL ship date is not an error: an order can be open. Rules must say which NULLs are allowed.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_7.png" aria-label="Enlarge screenshot of step 7"><img src="shots/q_7.png" loading="lazy" alt="SSMS screenshot: step 7 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q8">
+        <div class="q-head"><span class="num">#8</span><h3>8. Type 2 history has no gaps and no overlaps</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+WITH v AS (
+    SELECT ProductID, ValidFrom, ValidTo,
+           LEAD(ValidFrom) OVER (PARTITION BY ProductID ORDER BY ValidFrom) AS NextFrom
+    FROM dw.DimProduct)
+SELECT @n = COUNT(*) FROM v
+WHERE ValidFrom &gt;= ValidTo                                  -- a version that ends before it starts
+   OR (NextFrom IS NOT NULL AND NextFrom &lt;&gt; ValidTo)        -- a gap or an overlap before the next version
+   OR (NextFrom IS NULL AND ValidTo &lt;&gt; '9999-12-31');       -- the last version is not open
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Product versions touch, no gaps', 'Consistency', 'Error', @n);
+SELECT (SELECT COUNT(*) FROM dw.DimProduct) AS Versions,
+       (SELECT COUNT(DISTINCT ProductID) FROM dw.DimProduct) AS Products, @n AS BadVersions;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A Type 2 history is only usable if, for every product, any date falls into exactly one version. LEAD(ValidFrom) OVER (PARTITION BY ProductID ORDER BY ValidFrom) looks ahead to the next version of the same product. Three things count as failures: a version that ends before it starts; a next version that does not start exactly when this one ends (a gap leaves some sales with no product key, an overlap gives them two); and a last version that is not open until 9999-12-31. The 512 versions of 510 products (509 real products plus the Unknown member) all pass. Day 24's fact load relies on this rule silently; this check states it.</p><p class="pin"><span aria-hidden="true">📍</span> LEAD looks at the next version of the same product: its start must be exactly this version's end.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_8.png" aria-label="Enlarge screenshot of step 8"><img src="shots/q_8.png" loading="lazy" alt="SSMS screenshot: step 8 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q9">
+        <div class="q-head"><span class="num">#9</span><h3>9. Facts still waiting on an Unknown member</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+SELECT @n = COUNT(*) FROM dw.FactSales WHERE CustomerKey = -1 OR ProductKey = -1;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Facts on Unknown members', 'Consistency', 'Warning', @n);
+SELECT SUM(CASE WHEN CustomerKey = -1 THEN 1 ELSE 0 END) AS UnknownCustomer,
+       SUM(CASE WHEN ProductKey  = -1 THEN 1 ELSE 0 END) AS UnknownProduct
+FROM dw.FactSales;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>Day 24 sent order 75124 to the Unknown customer until the customer arrived, then repaired it. This check counts fact rows still on an Unknown member: 0 customers and 0 products. Its severity is Warning, not Error, because Unknown is a legitimate temporary state: a late-arriving customer should not stop the whole load. But a warning that is there every day for the same rows means the repair step is not working, and the run table makes that visible over time.</p><p class="pin"><span aria-hidden="true">📍</span> A Warning, not an Error: Unknown is allowed for a while, but it must be watched.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_9.png" aria-label="Enlarge screenshot of step 9"><img src="shots/q_9.png" loading="lazy" alt="SSMS screenshot: step 9 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="business-rules-and-plausibility"><h2>Business rules and plausibility</h2>
+      <article class="q" id="q10">
+        <div class="q-head"><span class="num">#10</span><h3>10. A product that is &quot;not for sale&quot; was sold</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+SELECT @n = COUNT(DISTINCT p.ProductID)
+FROM dw.FactSales f JOIN dw.DimProduct p ON p.ProductKey = f.ProductKey
+WHERE p.Category = 'Not for sale';
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Sold products have a category', 'Business rule', 'Warning', @n);
+SELECT p.ProductID, p.ProductName, p.Category, COUNT(*) AS Lines, SUM(f.SalesAmount) AS Revenue
+FROM dw.FactSales f JOIN dw.DimProduct p ON p.ProductKey = f.ProductKey
+WHERE p.Category = 'Not for sale'
+GROUP BY p.ProductID, p.ProductName, p.Category;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The first business rule check, and the first warning. Day 23's transform said that a product with no subcategory is 'Not for sale', because in AdventureWorks those are the components used to build bikes. Practice Light (1005), added on Day 22 without a subcategory, was sold on Day 24's test order: 1 line, 35.98. The data is not wrong in any technical way; an assumption in a rule is. The fix belongs to the data owner: either give the product a subcategory in the source, or change the label to something true, such as 'No category'. A warning is how the warehouse asks that question.</p><p class="pin"><span aria-hidden="true">📍</span> A business rule check tests an assumption, here Day 23's &quot;no subcategory means not for sale&quot;.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_10.png" aria-label="Enlarge screenshot of step 10"><img src="shots/q_10.png" loading="lazy" alt="SSMS screenshot: step 10 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q11">
+        <div class="q-head"><span class="num">#11</span><h3>11. Sold above its list price</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun), @n INT;
+SELECT @n = COUNT(*)
+FROM dw.FactSales f JOIN dw.DimProduct p ON p.ProductKey = f.ProductKey
+WHERE p.ProductKey &gt; 0 AND f.UnitPrice &gt; p.ListPrice;
+INSERT INTO etl.DQResult (RunID, CheckName, Category, Severity, FailedRows) VALUES (@run, 'Unit price not above list price', 'Plausibility', 'Warning', @n);
+SELECT p.ProductID, p.ProductName, p.ListPrice AS ListPriceInWarehouse,
+       MIN(f.UnitPrice) AS LowestSold, MAX(f.UnitPrice) AS HighestSold, COUNT(*) AS Lines,
+       MIN(f.OrderDateKey) AS FirstSale, MAX(f.OrderDateKey) AS LastSale
+FROM dw.FactSales f JOIN dw.DimProduct p ON p.ProductKey = f.ProductKey
+WHERE p.ProductKey &gt; 0 AND f.UnitPrice &gt; p.ListPrice
+GROUP BY p.ProductID, p.ProductName, p.ListPrice;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A plausibility check: a product sold above its list price is possible (a price can drop later) but unusual. One product fails, on 45 lines: Mountain-100 Black, 42 (ProductID 776). Its list price in the warehouse is 2,500.00, yet every sale, from 28 June 2011 to 28 May 2012, was at 3,374.99. Either the shop overcharged for a year, or the warehouse's price is wrong for that period. Warnings like this are why plausibility checks exist: no rule was broken, but something does not look right, and a person should look.</p><p class="pin"><span aria-hidden="true">📍</span> Plausibility checks find data that is possible but suspicious, and send a person to look.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_11.png" aria-label="Enlarge screenshot of step 11"><img src="shots/q_11.png" loading="lazy" alt="SSMS screenshot: step 11 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q12">
+        <div class="q-head"><span class="num">#12</span><h3>12. Following the warning back to the source</h3></div>
+        <pre><code class="language-sql">SELECT 'AdventureWorks2022 Product' AS WhereFrom, ListPrice, ModifiedDate
+FROM AdventureWorks2022.Production.Product WHERE ProductID = 776
+UNION ALL
+SELECT 'AdventureWorks2022 price history ' + CONVERT(CHAR(10), StartDate, 23) + ' to ' + CONVERT(CHAR(10), EndDate, 23),
+       ListPrice, ModifiedDate
+FROM AdventureWorks2022.Production.ProductListPriceHistory WHERE ProductID = 776
+UNION ALL
+SELECT 'AWPractice dbo.Product (our source)', ListPrice, ModifiedDate FROM dbo.Product WHERE ProductID = 776;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The source of truth answers it. AdventureWorks2022 lists product 776 at 3,374.99, and its price history table says that price was valid from 31 May 2011 to 29 May 2012: every sale was at list price. Our source, AWPractice's dbo.Product, says 2,500.00, modified on 16 October 2026 by an earlier practice lesson. The warehouse is faithful to its source; the problem is a Day 24 assumption. The first version of every product was given ValidFrom 1900-01-01, which claims that today's price was also the price in 2011. That is true for most products and false for 776. Two honest fixes exist: start the first version on the day of the first load (and accept that older sales point to a version that did not exist yet), or build the first versions from the source's own price history, as AdventureWorks2022.ProductListPriceHistory allows. The choice is a design decision for Day 27.</p><p class="pin"><span aria-hidden="true">📍</span> A warning is the start of an investigation: the answer was a change made in an earlier lesson.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_12.png" aria-label="Enlarge screenshot of step 12"><img src="shots/q_12.png" loading="lazy" alt="SSMS screenshot: step 12 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">3 rows</span></figcaption>
+        </figure>
+      </article></section><section class="part" id="using-the-results"><h2>Using the results</h2>
+      <article class="q" id="q13">
+        <div class="q-head"><span class="num">#13</span><h3>13. The run, in one table</h3></div>
+        <pre><code class="language-sql">SELECT CheckName, Category, Severity, FailedRows, Status
+FROM etl.DQResult WHERE RunID = (SELECT MAX(RunID) FROM etl.DQRun)
+ORDER BY ResultID;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The whole run as one table: ten checks, seven Errors and three Warnings by severity. All seven Error checks pass. Two Warnings are open: one product sold that is labelled 'Not for sale', and 45 lines sold above the warehouse's list price. This is the data quality report that goes to the people who own the data, and because each run is stored, the next run can be compared with this one: a warning that disappears was fixed; a new one is news.</p><p class="pin"><span aria-hidden="true">📍</span> Ten checks, one row each: this table is the data quality report.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_13.png" aria-label="Enlarge screenshot of step 13"><img src="shots/q_13.png" loading="lazy" alt="SSMS screenshot: step 13 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">10 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q14">
+        <div class="q-head"><span class="num">#14</span><h3>14. Test the tests: plant an error and see it caught</h3></div>
+        <pre><code class="language-sql">DECLARE @failsPlanted INT, @diffPlanted DECIMAL(19, 4), @failsAfter INT, @diffAfter DECIMAL(19, 4);
+BEGIN TRANSACTION;
+UPDATE dw.FactSales SET SalesAmount = SalesAmount + 100            -- one wrong amount, on purpose
+WHERE SalesOrderID = 43659 AND SalesOrderDetailID = 1;
+SET @failsPlanted = (SELECT COUNT(*) FROM dw.FactSales f
+       JOIN stg.SalesOrderDetail d ON d.SalesOrderID = f.SalesOrderID AND d.SalesOrderDetailID = f.SalesOrderDetailID
+       WHERE f.Quantity &lt;= 0 OR f.UnitPrice &lt; 0
+          OR ABS(f.SalesAmount - f.Quantity * f.UnitPrice * (1 - d.UnitPriceDiscount)) &gt; 0.01);
+SET @diffPlanted = (SELECT SUM(SalesAmount) FROM dw.FactSales)
+       - (SELECT SUM(CAST(LineTotal AS DECIMAL(19, 4))) FROM stg.SalesOrderDetail);
+ROLLBACK;                                                           -- undo it
+SET @failsAfter = (SELECT COUNT(*) FROM dw.FactSales f
+       JOIN stg.SalesOrderDetail d ON d.SalesOrderID = f.SalesOrderID AND d.SalesOrderDetailID = f.SalesOrderDetailID
+       WHERE f.Quantity &lt;= 0 OR f.UnitPrice &lt; 0
+          OR ABS(f.SalesAmount - f.Quantity * f.UnitPrice * (1 - d.UnitPriceDiscount)) &gt; 0.01);
+SET @diffAfter = (SELECT SUM(SalesAmount) FROM dw.FactSales)
+       - (SELECT SUM(CAST(LineTotal AS DECIMAL(19, 4))) FROM stg.SalesOrderDetail);
+SELECT 'One error planted' AS State, @failsPlanted AS AmountCheckFails, @diffPlanted AS RevenueDifference
+UNION ALL
+SELECT 'After ROLLBACK', @failsAfter, @diffAfter;</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>A check that has never failed has never been tested: it might be unable to fail. Inside a transaction, one fact line (order 43659, line 1) is given 100 more than it should have. The amount check now finds 1 failing line, and the revenue comparison shows a difference of exactly 100.0000, so both checks catch it. ROLLBACK undoes the change, and the same two checks return 0 and 0.0000. The results are held in variables, because a variable keeps its value after a ROLLBACK, while the data changes are undone. Planting errors on purpose like this is the testing practice for data pipelines.</p><p class="pin"><span aria-hidden="true">📍</span> A check that has never failed has never been tested. Break the data on purpose, inside a transaction.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_14.png" aria-label="Enlarge screenshot of step 14"><img src="shots/q_14.png" loading="lazy" alt="SSMS screenshot: step 14 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">2 rows</span></figcaption>
+        </figure>
+      </article>
+      <article class="q" id="q15">
+        <div class="q-head"><span class="num">#15</span><h3>15. The gate: may this load be published?</h3></div>
+        <pre><code class="language-sql">DECLARE @run INT = (SELECT MAX(RunID) FROM etl.DQRun);
+DECLARE @errors INT   = (SELECT COUNT(*) FROM etl.DQResult WHERE RunID = @run AND Status = 'Fail'),
+        @warnings INT = (SELECT COUNT(*) FROM etl.DQResult WHERE RunID = @run AND Status = 'Warning');
+UPDATE etl.DQRun SET EndedAt = SYSDATETIME(), Errors = @errors, Warnings = @warnings WHERE RunID = @run;
+IF @errors &gt; 0
+    THROW 50001, 'Data quality errors found: the load must not be published.', 1;
+PRINT CONCAT('Run ', @run, ': ', @errors, ' errors, ', @warnings, ' warnings.');
+PRINT 'The load can be published. The warnings go to the data owner to investigate.';</code></pre>
+        <div class="explain"><h4>What this query does</h4><p>The gate turns the results into a decision. It counts the failed Error checks (0) and the open warnings (2) for the run, stores them in etl.DQRun with the end time, and then decides: if there were any errors, THROW stops with error 50001 and the message that the load must not be published. A scheduler (SQL Server Agent, SSIS or Azure Data Factory) sees the failure and does not continue, so a wrong number never reaches a report. Here there are none, so the two PRINT lines appear on the Messages tab: run 1 has 0 errors and 2 warnings, and the load can be published while the warnings go to the data owner. On Day 26 this gate becomes the last step of the load procedure.</p><p class="pin"><span aria-hidden="true">📍</span> Errors stop the load (THROW); warnings let it through and go to a person.</p></div>
+        <figure>
+          <button class="shot" type="button" data-src="shots/q_15.png" aria-label="Enlarge screenshot of step 15"><img src="shots/q_15.png" loading="lazy" alt="SSMS screenshot: step 15 and its result"></button>
+          <figcaption>Result in SSMS: <span class="res">1 row</span></figcaption>
+        </figure>
+      </article></section>
+  <h2>What the checks found</h2><div class="tablewrap"><table class="map prose"><thead><tr><th>Check</th><th>Result</th><th>Cause</th><th>What to do</th></tr></thead><tbody><tr><td>Sold products have a category</td><td><strong>Warning:</strong> Practice Light, 1 line</td><td>Day 23 rule: no subcategory = "Not for sale"; this product has none but was sold</td><td>Data owner gives it a subcategory, or the label becomes "No category"</td></tr><tr><td>Unit price not above list price</td><td><strong>Warning:</strong> product 776, 45 lines</td><td>Day 24 gave every first version ValidFrom 1900, so the 2026 price (2,500) was applied to 2011 sales (3,374.99)</td><td>Start first versions at the first load, or build them from ProductListPriceHistory (Day 27 decision)</td></tr><tr><td>Products: source = staging</td><td>Pass</td><td>114 products in dbo.Product were repriced without changing ModifiedDate</td><td>A watermark would miss such changes; keep a full compare for small tables</td></tr><tr><td>All seven Error checks</td><td>Pass</td><td></td><td>The load may be published</td></tr></tbody></table></div><h2>Self-test: answers</h2><div class="tip"><strong>Error or Warning?</strong> Error when a report would be wrong and nobody could tell (lost rows, a total that does not match, a duplicate). Warning when the data might be right but needs a person (a late customer, an odd price, a broken assumption).<br><br><strong>Why compare neighbouring steps (staging vs fact) and not the first and last?</strong> Because a failure then names the step that caused it. Staging vs fact also includes the test order that AdventureWorks2022 does not have, so a source-to-fact comparison would fail for a reason that is not a fault.<br><br><strong>Why check what a constraint already prevents?</strong> Constraints are dropped for big loads and not always put back, and some rules have no constraint at all: a filtered unique index stops two current versions but not zero.<br><br><strong>How do you know a check works?</strong> Make it fail on purpose. Step 14 adds 100 to one line inside a transaction; both checks catch it, and ROLLBACK puts the data back.<br><br><strong>Why did the warehouse have the wrong price for product 776?</strong> Not because of a fault in the load: it copied its source faithfully. The first Type 2 version claimed to be valid since 1900, and for this product the price had been different in 2011. Checks find symptoms; the cause can be an assumption made days earlier.</div>
+  <nav class="pager"><a href="../day24/">← Day 24: Load: dimensions, history and the fact table</a><span></span></nav>
+</main>
+<footer class="site-foot"><p>SQL Syllabus · Noor Tayyaba Batool, Data Engineering Intern · AdventureWorks2022 on SQL Server Express</p></footer>
+<dialog id="zoom"><img alt=""><button type="button" aria-label="Close">Close</button></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+<script src="../assets/site.js"></script>
+</body>
+</html>
